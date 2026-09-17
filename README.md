@@ -71,7 +71,9 @@ Integration → **Configure**:
   fields don't show up as sensors — the calendar still uses them).
 - **Boiler regulation** (opt-in, disabled unless both sensors are set) – room and
   outdoor temperature sensor, heating-curve slope, proportional/integral gain
-  (Kp/Ki), min/max flow temperature, `SetMode` write interval. See
+  (Kp/Ki), min/max flow temperature, heat-demand hysteresis (stops calling for
+  heat once the room overshoots the setpoint by this margin, resumes once it
+  drops back below), `SetMode` write interval. See
   `custom_components/ebus_bridge/regulation.py` for the (pure, unit-tested) formula.
 
 ### Installation
@@ -173,7 +175,9 @@ Integration → **Konfigurieren**:
   Zeitprogramm-Felder nicht als Sensoren erscheinen – der Kalender nutzt sie weiter).
 - **Kesselregelung** (optional, deaktiviert bis beide Sensoren gesetzt sind) – Raum-
   und Außentemperatursensor, Steigung der Heizkurve, Proportional-/Integralverstärkung
-  (Kp/Ki), minimale/maximale Vorlauftemperatur, Schreibintervall für `SetMode`. Formel
+  (Kp/Ki), minimale/maximale Vorlauftemperatur, Hysterese der Wärmeanforderung (stoppt
+  die Anforderung, sobald der Raum die Konsigne um diese Marge überschreitet, und nimmt
+  sie erst wieder auf, wenn er darunter fällt), Schreibintervall für `SetMode`. Formel
   (rein, unit-getestet) in `custom_components/ebus_bridge/regulation.py`.
 
 ### Installation

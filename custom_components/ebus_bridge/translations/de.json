@@ -33,6 +33,7 @@
           "boiler_ki": "Kesselregelung: Integralverstärkung (Ki)",
           "boiler_flow_min": "Kesselregelung: minimale Vorlauftemperatur (°C)",
           "boiler_flow_max": "Kesselregelung: maximale Vorlauftemperatur (°C)",
+          "boiler_hysteresis": "Kesselregelung: Hysterese der Wärmeanforderung (°C, Überschreitung über Konsigne bis zum Abschalten)",
           "boiler_write_interval": "Kesselregelung: Schreibintervall für SetMode (Sekunden)"
         }
       }

@@ -41,6 +41,7 @@ from .const import (
     CONF_BOILER_CURVE_SLOPE,
     CONF_BOILER_FLOW_MAX,
     CONF_BOILER_FLOW_MIN,
+    CONF_BOILER_HYSTERESIS,
     CONF_BOILER_KI,
     CONF_BOILER_KP,
     CONF_BOILER_OUTDOOR_SENSOR,
@@ -49,6 +50,7 @@ from .const import (
     DEFAULT_BOILER_CURVE_SLOPE,
     DEFAULT_BOILER_FLOW_MAX,
     DEFAULT_BOILER_FLOW_MIN,
+    DEFAULT_BOILER_HYSTERESIS,
     DEFAULT_BOILER_KI,
     DEFAULT_BOILER_KP,
     DEFAULT_BOILER_WRITE_INTERVAL,
@@ -57,7 +59,7 @@ from .const import (
 from .coordinator import EbusdCoordinator
 from .entity import build_device_info
 from .model import FieldDesc
-from .regulation import RegulationParams, compute_flow_setpoint, format_setmode
+from .regulation import RegulationParams, compute_flow_setpoint, format_setmode, should_call_for_heat
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -124,6 +126,9 @@ def _build_boiler_climates(
         ),
         flow_max=float(
             entry.options.get(CONF_BOILER_FLOW_MAX, DEFAULT_BOILER_FLOW_MAX)
+        ),
+        hysteresis=float(
+            entry.options.get(CONF_BOILER_HYSTERESIS, DEFAULT_BOILER_HYSTERESIS)
         ),
     )
     interval = int(
@@ -303,6 +308,7 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
         self._write_interval = write_interval
         self._flame_key = (circuit, "Flame", "Flame")
         self._integral = 0.0
+        self._calling_for_heat = False
         self._attr_unique_id = f"{DOMAIN}_{circuit}_boiler_climate".lower()
         self._attr_device_info = build_device_info(coordinator, circuit)
         self._attr_hvac_mode = HVACMode.OFF
@@ -343,6 +349,9 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
                 self._integral = float(integral)
             except (TypeError, ValueError):
                 pass
+        calling = last_state.attributes.get("regulation_calling_for_heat")
+        if calling is not None:
+            self._calling_for_heat = bool(calling)
 
     @callback
     def _handle_room_sensor_change(self, event: Any) -> None:
@@ -363,12 +372,17 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"regulation_integral": round(self._integral, 3)}
+        return {
+            "regulation_integral": round(self._integral, 3),
+            "regulation_calling_for_heat": self._calling_for_heat,
+        }
 
     @property
     def hvac_action(self) -> HVACAction | None:
         if self.hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
+        if not self._calling_for_heat:
+            return HVACAction.IDLE
         flame = self.coordinator.data.get(self._flame_key)
         if flame is None:
             return None
@@ -407,6 +421,12 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
                     "übersprungen", self.entity_id,
                 )
                 return
+            self._calling_for_heat = should_call_for_heat(
+                target_room=self._attr_target_temperature,
+                current_room=self._attr_current_temperature,
+                currently_calling=self._calling_for_heat,
+                hysteresis=self._params.hysteresis,
+            )
             result = compute_flow_setpoint(
                 target_room=self._attr_target_temperature,
                 current_room=self._attr_current_temperature,
@@ -416,7 +436,9 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
             )
             self._integral = result.integral
             flow_setpoint = result.flow_setpoint
-        value = format_setmode(flow_setpoint, active)
+        else:
+            self._calling_for_heat = False
+        value = format_setmode(flow_setpoint, active, self._calling_for_heat)
         try:
             await self.coordinator.client.write(self._circuit, "SetMode", value)
         except EbusdError as err:

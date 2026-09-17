@@ -91,3 +91,40 @@ def test_format_setmode_active_sets_hcmode_auto_and_flow():
 def test_format_setmode_inactive_sets_hcmode_off():
     assert regulation.format_setmode(30.0, active=False) == "off;-;-;-;0;0;0;0;0;0"
     assert regulation.format_setmode(None, active=True) == "off;-;-;-;0;0;0;0;0;0"
+
+
+def test_format_setmode_satisfied_sets_disablehc_keeps_hcmode_auto():
+    # Konsigne erreicht (Hysterese) -> Heizung sperren, aber hcmode bleibt "auto"
+    # (WW-Bereitung unangetastet), kein kompletter HVACMode.OFF nötig.
+    assert (
+        regulation.format_setmode(30.0, active=True, calling_for_heat=False)
+        == "auto;30.0;-;-;1;0;0;0;0;0"
+    )
+
+
+def test_should_call_for_heat_starts_when_room_below_target():
+    assert regulation.should_call_for_heat(
+        target_room=20.0, current_room=19.9, currently_calling=False, hysteresis=0.3
+    )
+    assert not regulation.should_call_for_heat(
+        target_room=20.0, current_room=20.0, currently_calling=False, hysteresis=0.3
+    )
+
+
+def test_should_call_for_heat_keeps_running_until_hysteresis_exceeded():
+    # Bereits am Heizen, Raum leicht über Konsigne -> noch nicht abschalten.
+    assert regulation.should_call_for_heat(
+        target_room=20.0, current_room=20.2, currently_calling=True, hysteresis=0.3
+    )
+    # Erst nach Überschreiten der Hysterese abschalten.
+    assert not regulation.should_call_for_heat(
+        target_room=20.0, current_room=20.4, currently_calling=True, hysteresis=0.3
+    )
+
+
+def test_should_call_for_heat_no_short_cycling_at_exact_target():
+    # Reiner Fließkommavergleich ohne Hysterese würde am exakten Zielwert flattern;
+    # mit currently_calling=True bleibt es bei "weiter heizen" bis über die Hysterese.
+    assert regulation.should_call_for_heat(
+        target_room=20.0, current_room=20.0, currently_calling=True, hysteresis=0.3
+    )

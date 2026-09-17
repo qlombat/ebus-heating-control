@@ -33,6 +33,7 @@
           "boiler_ki": "Boiler regulation: integral gain (Ki)",
           "boiler_flow_min": "Boiler regulation: minimum flow temperature (°C)",
           "boiler_flow_max": "Boiler regulation: maximum flow temperature (°C)",
+          "boiler_hysteresis": "Boiler regulation: heat-demand hysteresis (°C, stop overshoot above target)",
           "boiler_write_interval": "Boiler regulation: SetMode write interval (seconds)"
         }
       }

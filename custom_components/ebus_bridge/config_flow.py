@@ -15,6 +15,7 @@ from .const import (
     CONF_BOILER_CURVE_SLOPE,
     CONF_BOILER_FLOW_MAX,
     CONF_BOILER_FLOW_MIN,
+    CONF_BOILER_HYSTERESIS,
     CONF_BOILER_KI,
     CONF_BOILER_KP,
     CONF_BOILER_OUTDOOR_SENSOR,
@@ -29,6 +30,7 @@ from .const import (
     DEFAULT_BOILER_CURVE_SLOPE,
     DEFAULT_BOILER_FLOW_MAX,
     DEFAULT_BOILER_FLOW_MIN,
+    DEFAULT_BOILER_HYSTERESIS,
     DEFAULT_BOILER_KI,
     DEFAULT_BOILER_KP,
     DEFAULT_BOILER_WRITE_INTERVAL,
@@ -150,6 +152,10 @@ class EbusdOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_BOILER_FLOW_MAX,
                     default=opts.get(CONF_BOILER_FLOW_MAX, DEFAULT_BOILER_FLOW_MAX),
+                ): vol.Coerce(float),
+                vol.Optional(
+                    CONF_BOILER_HYSTERESIS,
+                    default=opts.get(CONF_BOILER_HYSTERESIS, DEFAULT_BOILER_HYSTERESIS),
                 ): vol.Coerce(float),
                 vol.Optional(
                     CONF_BOILER_WRITE_INTERVAL,

@@ -42,6 +42,11 @@ class RegulationParams:
     # flow_min/flow_max, damit ein bereits gesättigter Vorlauf den Integral-
     # Zustand nicht unbegrenzt weiter aufsummiert.
     integral_limit: float = 10.0
+    # Hysterese der Wärmeanforderung (°C): erst AUS, wenn der Raum die Konsigne
+    # um mehr als diesen Wert überschreitet (siehe `should_call_for_heat`).
+    # Ohne das würde die Kesselregelung nie wirklich stoppen -- die Heizkurve
+    # allein liefert auch bei erreichter Konsigne einen Vorlauf > 0.
+    hysteresis: float = 0.3
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,24 @@ class RegulationResult:
     flow_setpoint: float
     integral: float
     error: float
+
+
+def should_call_for_heat(
+    target_room: float,
+    current_room: float,
+    currently_calling: bool,
+    hysteresis: float,
+) -> bool:
+    """Hysterese-Wärmeanforderung: verhindert Kurzzyklen um die Konsigne.
+
+    Startet die Anforderung sobald der Raum unter die Konsigne fällt, beendet
+    sie erst, wenn er sie um `hysteresis` überschreitet -- ohne diese Sperre
+    würde `compute_flow_setpoint` (reine Heizkurve) auch bei erreichter
+    Konsigne dauerhaft einen Vorlauf > 0 liefern und der Kessel liefe endlos.
+    """
+    if currently_calling:
+        return current_room < target_room + hysteresis
+    return current_room < target_room
 
 
 def compute_flow_setpoint(
@@ -75,14 +98,24 @@ def compute_flow_setpoint(
     return RegulationResult(flow_setpoint=round(flow, 1), integral=round(integral, 3), error=error)
 
 
-def format_setmode(flow_setpoint: float | None, active: bool) -> str:
+def format_setmode(flow_setpoint: float | None, active: bool, calling_for_heat: bool = True) -> str:
     """Baut den 10-Felder-Wertestring für das eBUS-Kommando `SetMode`.
 
-    Nur `hcmode` und `flowtempdesired` werden gesetzt (`-` = unverändert lassen);
-    die restlichen Felder bleiben 0 (keine Sperren/Freigaben angefordert) --
-    entspricht dem am realen Gerät validierten Testwert
-    `auto;30;-;-;0;0;0;0;0;0`.
+    Drei Zustände:
+    - `active=False` (Nutzer hat HVACMode.OFF gewählt): `hcmode=off`, Kessel
+      komplett abgeschaltet (auch WW).
+    - `active=True, calling_for_heat=True`: normale Modulation, `hcmode=auto`
+      mit dem berechneten Vorlauf-Sollwert, `disablehc=0`.
+    - `active=True, calling_for_heat=False`: Konsigne erreicht (Hysterese, siehe
+      `should_call_for_heat`) -- `hcmode=auto` bleibt (WW weiter erlaubt), aber
+      `disablehc=1` sperrt die Heizfunktion, statt dauerhaft weiter zu modulieren.
+
+    Nur `hcmode`, `flowtempdesired` und `disablehc` werden gesetzt (`-` = un-
+    verändert lassen); die restlichen Felder bleiben 0 (keine weiteren Sperren/
+    Freigaben angefordert) -- entspricht dem am realen Gerät validierten
+    Testwert `auto;30;-;-;0;0;0;0;0;0`.
     """
     if not active or flow_setpoint is None:
         return f"{HCMODE_OFF};-;-;-;0;0;0;0;0;0"
-    return f"{HCMODE_ACTIVE};{flow_setpoint};-;-;0;0;0;0;0;0"
+    disablehc = 0 if calling_for_heat else 1
+    return f"{HCMODE_ACTIVE};{flow_setpoint};-;-;{disablehc};0;0;0;0;0"

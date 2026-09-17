@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.7.1
+- Fix: boiler regulation never actually stopped calling for heat once the room reached its setpoint — the heating-curve formula alone always returns a flow temperature > 0. Added a heat-demand hysteresis (`should_call_for_heat`, new option `boiler_hysteresis`, default 0.3 °C): once the room exceeds target by this margin, `SetMode`'s `disablehc` bit is set (DHW stays unaffected) until it drops back below target.
+
 ## 1.7.0
 - New optional **boiler regulation**: for BAI-style boilers with no room controller left on the bus (e.g. after removing an Exacontrol), a `climate` entity now computes a modulating flow-temperature setpoint (heating curve + room PI, see `regulation.py`) from a configurable room and outdoor sensor, and writes it via `SetMode` — no more on/off, real modulation. Opt-in via new Options: room/outdoor sensor, curve slope, Kp/Ki, min/max flow temperature, write interval.
 - Fix: `network.async_get_source_ip` call in config flow used the removed `target` kwarg; renamed to `target_ip` (current HA API).
