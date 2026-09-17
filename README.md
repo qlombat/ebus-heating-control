@@ -50,7 +50,13 @@ definitions); this integration is the HA layer on top.
   per program (Z1/Z2/Z3/Hwc/Cc …). Slot = `htm`–`htm_1`, title = target temperature.
   **Editable** (create/update/delete) **once ebusd exposes a writable per-day message
   `<Prefix>Timer_<Day>`** — otherwise read-only. Target temp in the event title;
-  changes apply to the whole weekly slot.
+  changes apply to the whole weekly slot. Additionally, whenever the boiler regulation
+  `climate` entity above is enabled, a separate **"Heating schedule" calendar** appears:
+  a fully editable weekly program (not tied to any eBUS message, stored locally) that
+  drives the climate entity's target temperature automatically — create/update/delete
+  events via the standard HA calendar UI, title = target temperature (e.g. "21 °C"),
+  supports windows spanning midnight. Manually changing the target temperature
+  overrides the schedule until the next slot change.
 
 After every write (number/select/switch) the integration performs a fresh read
 (`read -f`) so non-polled setpoints don't become "unavailable".
@@ -103,6 +109,9 @@ confirm; remote ebusd → override the IP). Ports `8888`/`8889` are preset.
   `switch.py` / `calendar.py` – the platforms.
 - `regulation.py` – pure (no HA import, unit-tested) heating-curve + room-PI formula
   used by the optional boiler `climate` entity.
+- `schedule.py` – pure (no HA import, unit-tested) weekly-schedule slot lookup;
+  `schedule_store.py` persists it via `homeassistant.helpers.storage.Store`, shared
+  between the boiler `climate` entity and its "Heating schedule" `calendar` entity.
 - `config_flow.py` – host + both ports (tests both) + options flow.
 
 ---
@@ -157,6 +166,13 @@ die eigentliche eBUS-Dekodierung; diese Integration ist die HA-Schicht darüber.
   Titel = Soll-Temperatur. **Bearbeitbar** (Anlegen/Ändern/Löschen), **sobald ebusd
   eine schreibbare Tages-Nachricht `<Prefix>Timer_<Tag>` anbietet** – sonst
   read-only. Soll-Temp im Termin-Titel; Änderungen gelten fürs ganze Wochen-Fenster.
+  Zusätzlich erscheint, sobald die Kesselregelung (`climate`, oben) aktiv ist, ein
+  eigener Kalender **„Heating schedule"**: ein voll editierbares Wochenprogramm
+  (nicht an eine eBUS-Nachricht gebunden, lokal gespeichert), das den Soll-Wert der
+  Kessel-Climate-Entity automatisch steuert – Anlegen/Ändern/Löschen über die
+  Standard-HA-Kalenderoberfläche, Titel = Soll-Temperatur (z. B. „21 °C"), auch
+  Fenster über Mitternacht möglich. Manuelles Ändern der Soll-Temperatur überschreibt
+  das Zeitprogramm bis zum nächsten Slotwechsel.
 
 Nach jedem Schreiben (number/select/switch) liest die Integration den Wert frisch
 zurück (`read -f`), damit nicht gepollte Sollwerte nicht „nicht verfügbar" werden.
@@ -211,4 +227,8 @@ Remote-ebusd → IP überschreiben). Ports `8888`/`8889` sind voreingestellt.
   `switch.py` / `calendar.py` – die Plattformen.
 - `regulation.py` – reine (kein HA-Import, unit-getestete) Heizkurven-/Raum-PI-Formel
   für die optionale Kessel-`climate`-Entity.
+- `schedule.py` – reine (kein HA-Import, unit-getestete) Auswertung des Wochen-
+  Zeitprogramms; `schedule_store.py` persistiert es über
+  `homeassistant.helpers.storage.Store`, geteilt zwischen der Kessel-`climate`-
+  Entity und ihrem „Heating schedule"-`calendar`.
 - `config_flow.py` – Host + beide Ports (testet beide) + Options-Flow.

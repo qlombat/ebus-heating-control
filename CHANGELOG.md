@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.0
+- New: optional weekly heating schedule for the boiler regulation `climate` entity. A new `calendar` entity ("Heating schedule") appears next to it whenever boiler regulation is enabled, editable via HA's standard calendar UI (create/update/delete events; event title = target temperature, e.g. "21 °C"). Each event is a recurring weekly slot (day of week + time window), stored locally (not on the eBUS device). The active slot's temperature is applied automatically; manually changing the target temperature on the climate entity temporarily overrides the schedule until the next slot change, then the schedule resumes. Windows spanning midnight (e.g. 22:00-06:00) are supported.
+- New pure `schedule.py` module (unit-tested, no HA dependency) computing which schedule slot is active; persistence lives in `schedule_store.py`.
+
 ## 1.7.3
 - Boiler regulation defaults recalibrated for classic radiators with thermostatic valves: curve slope 1.2 → 1.7, minimum flow temperature 30 → 40 °C, maximum flow 55 → 65 °C, no-outdoor-sensor base flow 35 → 45 °C. The old defaults were tuned closer to underfloor heating and produced flow temperatures too low for radiators to emit noticeable heat in mild weather (e.g. ~33 °C at 14 °C outside), even though the boiler was correctly modulating. New defaults are calibrated against a real installation that previously ran ~60 °C flow at 0 °C outside / 22 °C room target. Existing installations keep their already-saved option values; this only changes what new installs see as pre-filled defaults.
 

@@ -10,7 +10,9 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .client import EbusdClient, EbusdError
+from .climate import boiler_circuits
 from .const import (
+    CONF_BOILER_ROOM_SENSOR,
     CONF_EXCLUDE,
     CONF_FAST,
     CONF_HOST,
@@ -25,6 +27,7 @@ from .const import (
 )
 from .coordinator import EbusdCoordinator
 from .entity import build_device_info
+from .schedule_store import HeatingScheduleStore
 from .services import async_setup_services, async_unload_services
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,6 +70,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.entry_id, host, fast,
     )
     await coordinator.async_config_entry_first_refresh()
+
+    # Wochen-Zeitprogramm-Speicher je Kessel-Regelungs-Kreis VOR dem Plattform-
+    # Setup anlegen: climate.py (liest) und calendar.py (schreibt) teilen sich
+    # dieselbe Instanz je Kreis, damit Kalender-Änderungen ohne Neuladen von
+    # der Platte sofort im Regelzyklus ankommen. Nur wenn die Kessel-Regelung
+    # per Raumsensor aktiviert ist (sonst gibt es keine passende Climate-Entity,
+    # die den Zeitplan überhaupt anwenden würde).
+    if entry.options.get(CONF_BOILER_ROOM_SENSOR):
+        for circuit in boiler_circuits(coordinator):
+            coordinator.heating_schedule_stores[circuit] = HeatingScheduleStore(
+                hass, entry.entry_id, circuit
+            )
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 

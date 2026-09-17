@@ -18,6 +18,7 @@ from .model import (
     parse_global,
     parse_values,
 )
+from .schedule_store import HeatingScheduleStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -105,6 +106,10 @@ class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
         self._dead: set[tuple[str, str]] = set()
         self._last_revive: float | None = None
         self._unread_tries: dict[tuple[str, str], int] = {}
+        # Wochen-Zeitprogramme der Kessel-Regelung, je Kreis eine Instanz --
+        # von __init__.py angelegt (vor dem Plattform-Setup) und danach
+        # zwischen climate.py (liest) und calendar.py (schreibt) geteilt.
+        self.heating_schedule_stores: dict[str, HeatingScheduleStore] = {}
         self._fast = self._collect_fast(fields, fast or [])
         if self._fast:
             _LOGGER.info(

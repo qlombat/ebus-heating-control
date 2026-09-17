@@ -9,7 +9,9 @@ Register (Nicht-Vaillant), entsteht kein Gerät. Rohe Entitäten bleiben zusätz
 Zusätzlich (optional, siehe `EbusdBoilerClimate`): eine modulierende
 Kessel-Regelung für BAI-Kreise ohne eigenen Raumregler (z. B. nach Ausbau
 eines Exacontrol) -- ersetzt kein Zonenregister, sondern schreibt periodisch
-einen selbst berechneten Vorlauf-Sollwert über `SetMode`.
+einen selbst berechneten Vorlauf-Sollwert über `SetMode`. Optional per
+Wochen-Zeitprogramm (siehe `calendar.EbusdHeatingScheduleCalendar` +
+`schedule.py`) statt eines einzigen festen Sollwerts.
 """
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ import re
 from datetime import timedelta
 from typing import Any
 
+import homeassistant.util.dt as dt_util
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
@@ -62,6 +65,8 @@ from .coordinator import EbusdCoordinator
 from .entity import build_device_info
 from .model import FieldDesc
 from .regulation import RegulationParams, compute_flow_setpoint, format_setmode, should_call_for_heat
+from .schedule import active_setpoint
+from .schedule_store import HeatingScheduleStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -114,10 +119,7 @@ def _build_boiler_climates(
     if not room_sensor:
         return []
 
-    circuits: dict[str, set[str]] = {}
-    for d in coordinator.fields:
-        if d.message == "SetMode" and d.field in _SETMODE_FIELDS:
-            circuits.setdefault(d.circuit, set()).add(d.field)
+    circuits = boiler_circuits(coordinator)
 
     params = RegulationParams(
         curve_slope=float(
@@ -143,11 +145,25 @@ def _build_boiler_climates(
     )
     return [
         EbusdBoilerClimate(
-            coordinator, circuit, room_sensor, outdoor_sensor, params, interval
+            coordinator, circuit, room_sensor, outdoor_sensor, params, interval,
+            coordinator.heating_schedule_stores.get(circuit),
         )
-        for circuit, fields in sorted(circuits.items())
-        if _SETMODE_FIELDS <= fields
+        for circuit in circuits
     ]
+
+
+def boiler_circuits(coordinator: EbusdCoordinator) -> list[str]:
+    """eBUS-Kreise, die per `SetMode` eine Kessel-Modulationsregelung erlauben.
+
+    Öffentlich, damit `__init__.py` (Zeitprogramm-Speicher vor dem Anlegen der
+    Plattformen anlegen) und `calendar.py` (Zeitprogramm-Kalender je Kreis)
+    dieselbe Erkennung wiederverwenden, statt sie zu duplizieren.
+    """
+    circuits: dict[str, set[str]] = {}
+    for d in coordinator.fields:
+        if d.message == "SetMode" and d.field in _SETMODE_FIELDS:
+            circuits.setdefault(d.circuit, set()).add(d.field)
+    return sorted(c for c, fields in circuits.items() if _SETMODE_FIELDS <= fields)
 
 
 
@@ -287,6 +303,11 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
     Zustand dieser Entity (auch HVACMode.OFF) komplett unberührt, siehe
     `regulation.format_setmode`.
 
+    Optionales Wochen-Zeitprogramm (siehe `calendar.EbusdHeatingScheduleCalendar`
+    und `schedule.py`): passt `target_temperature` automatisch an den jeweils
+    aktiven Slot an. Ein manuelles `async_set_temperature` überschreibt das
+    Programm bis zum nächsten Slotwechsel (siehe `_apply_schedule`).
+
     Jeder Zyklus schreibt neu, unabhängig davon, ob sich etwas geändert hat --
     das dient zugleich als Lebenszeichen für den Kessel (Failsafe-Verhalten bei
     Ausfall von HA/ebusd liegt dann an dessen eigener Elektronik).
@@ -313,6 +334,7 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
         outdoor_sensor: str | None,
         params: RegulationParams,
         write_interval: int,
+        schedule_store: HeatingScheduleStore | None,
     ) -> None:
         super().__init__(coordinator)
         self._circuit = circuit
@@ -320,9 +342,15 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
         self._outdoor_sensor = outdoor_sensor
         self._params = params
         self._write_interval = write_interval
+        self._schedule_store = schedule_store
         self._flame_key = (circuit, "Flame", "Flame")
         self._integral = 0.0
         self._calling_for_heat = False
+        # Wochenprogramm: sobald der Nutzer manuell eine Temperatur setzt, gilt
+        # das als Override gegenüber dem Zeitprogramm -- bis der Programm-Wert
+        # sich beim nächsten Slotwechsel ändert (siehe `_async_regulate`).
+        self._schedule_override = False
+        self._schedule_baseline: float | None = None
         self._attr_unique_id = f"{DOMAIN}_{circuit}_boiler_climate".lower()
         self._attr_device_info = build_device_info(coordinator, circuit)
         self._attr_hvac_mode = HVACMode.OFF
@@ -366,6 +394,15 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
         calling = last_state.attributes.get("regulation_calling_for_heat")
         if calling is not None:
             self._calling_for_heat = bool(calling)
+        override = last_state.attributes.get("schedule_override")
+        if override is not None:
+            self._schedule_override = bool(override)
+        baseline = last_state.attributes.get("schedule_baseline")
+        if baseline is not None:
+            try:
+                self._schedule_baseline = float(baseline)
+            except (TypeError, ValueError):
+                pass
 
     @callback
     def _handle_room_sensor_change(self, event: Any) -> None:
@@ -389,6 +426,8 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
         return {
             "regulation_integral": round(self._integral, 3),
             "regulation_calling_for_heat": self._calling_for_heat,
+            "schedule_override": self._schedule_override,
+            "schedule_baseline": self._schedule_baseline,
         }
 
     @property
@@ -407,6 +446,11 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
         if temp is None:
             return
         self._attr_target_temperature = float(temp)
+        if self._schedule_store is not None:
+            # Manuelles Setzen überschreibt das Zeitprogramm, bis dessen Wert
+            # sich beim nächsten Slotwechsel ändert (siehe `_apply_schedule`).
+            self._schedule_baseline = await self._current_schedule_value()
+            self._schedule_override = True
         self.async_write_ha_state()
         await self._async_regulate()
 
@@ -423,7 +467,39 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
     async def async_turn_off(self) -> None:
         await self.async_set_hvac_mode(HVACMode.OFF)
 
+    async def _current_schedule_value(self) -> float | None:
+        """Soll-Temperatur des aktuell aktiven Zeitprogramm-Slots, falls vorhanden."""
+        if self._schedule_store is None:
+            return None
+        events = await self._schedule_store.async_events()
+        if not events:
+            return None
+        now = dt_util.now()
+        return active_setpoint(events, weekday=now.weekday(), now=now.time())
+
+    async def _apply_schedule(self) -> None:
+        """Übernimmt den Zeitprogramm-Sollwert, sofern kein Override aktiv ist.
+
+        Ein manueller Override (siehe `async_set_temperature`) bleibt bestehen,
+        bis der Programm-Wert sich gegenüber der beim Setzen gespeicherten
+        Baseline ändert (nächster Slotwechsel) -- danach führt das Zeitprogramm
+        wieder. Ohne Zeitprogramm oder ohne passenden Slot bleibt der zuletzt
+        bekannte Sollwert unverändert (z. B. der manuell gesetzte, oder der beim
+        Neustart wiederhergestellte).
+        """
+        schedule_value = await self._current_schedule_value()
+        if schedule_value is None:
+            return
+        if self._schedule_override:
+            if schedule_value == self._schedule_baseline:
+                return  # noch im selben Slot wie beim Setzen des Overrides
+            self._schedule_override = False  # neuer Slot -> Override beendet
+        if self._attr_target_temperature != schedule_value:
+            self._attr_target_temperature = schedule_value
+        self._schedule_baseline = schedule_value
+
     async def _async_regulate(self, _now: Any = None) -> None:
+        await self._apply_schedule()
         active = self.hvac_mode == HVACMode.HEAT
         flow_setpoint: float | None = None
         if active:

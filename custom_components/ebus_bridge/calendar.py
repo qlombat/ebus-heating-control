@@ -32,6 +32,7 @@ from .client import EbusdError
 from .const import DOMAIN
 from .coordinator import EbusdCoordinator
 from .entity import build_device_info
+from .schedule_store import HeatingScheduleStore
 
 _WEEKDAY_NAMES = [
     "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
@@ -83,7 +84,7 @@ async def async_setup_entry(
             (_WEEKDAY[m.group("day")], int(m.group("slot")), d.message)
         )
 
-    entities = []
+    entities: list[Any] = []
     for (circuit, prefix), slots in schedules.items():
         # schreibbar, wenn die Tages-Write-Nachricht für einen der Tage existiert
         writable = any(
@@ -96,6 +97,10 @@ async def async_setup_entry(
                 writable=writable, has_temp=has_temp.get((circuit, prefix), False),
             )
         )
+    # Wochen-Zeitprogramm der HA-seitigen Kessel-Regelung (siehe climate.py /
+    # schedule.py) -- ein Kalender je Kreis mit konfiguriertem Speicher.
+    for circuit, store in coordinator.heating_schedule_stores.items():
+        entities.append(EbusdHeatingScheduleCalendar(coordinator, circuit, store))
     async_add_entities(entities)
 
 
@@ -282,3 +287,130 @@ class EbusdCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
             weekday, slot, "00:00", "00:00", 0,
             max(self._active_slots(weekday) - 1, 0),
         )
+
+
+class EbusdHeatingScheduleCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
+    """Wochen-Zeitprogramm für die HA-seitige Kessel-Regelung (climate.py).
+
+    Rein HA-seitig gespeichert (siehe `schedule_store.py`) -- im Gegensatz zu
+    `EbusdCalendar` oben keine eBUS-Nachrichten, daher immer voll bearbeitbar
+    (kein fester Slot-Vorrat je Wochentag). Jedes Ereignis hat eine stabile
+    eigene ID, Titel = Soll-Temperatur (z. B. "21 °C"), gültig für den
+    Wochentag, an dem es beginnt (über Mitternacht laufende Fenster siehe
+    `schedule.active_setpoint`).
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Heating schedule"
+    _attr_supported_features = (
+        CalendarEntityFeature.CREATE_EVENT
+        | CalendarEntityFeature.UPDATE_EVENT
+        | CalendarEntityFeature.DELETE_EVENT
+    )
+
+    def __init__(
+        self, coordinator: EbusdCoordinator, circuit: str, store: HeatingScheduleStore
+    ) -> None:
+        super().__init__(coordinator)
+        self._circuit = circuit
+        self._store = store
+        self._attr_unique_id = f"{DOMAIN}_{circuit}_heating_schedule".lower()
+        self._attr_device_info = build_device_info(coordinator, circuit)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # Einmalig laden, damit die synchrone `event`-Property danach den
+        # Cache nutzen kann (siehe `HeatingScheduleStore.cached_events`).
+        await self._store.async_events()
+
+    def _events_for_day(self, day: date) -> list[CalendarEvent]:
+        tz = dt_util.get_default_time_zone()
+        out: list[CalendarEvent] = []
+        for ev in self._store.cached_events:
+            if ev.weekday != day.weekday() or ev.start == ev.end:
+                continue  # anderer Wochentag oder leerer/ungültiger Slot
+            start_dt = datetime.combine(day, ev.start, tzinfo=tz)
+            end_dt = datetime.combine(day, ev.end, tzinfo=tz)
+            if end_dt <= start_dt:
+                end_dt += timedelta(days=1)  # über Mitternacht
+            out.append(
+                CalendarEvent(
+                    start=start_dt, end=end_dt,
+                    summary=f"{ev.temperature:g} °C", uid=ev.id,
+                )
+            )
+        return out
+
+    async def async_get_events(
+        self, hass: HomeAssistant, start_date: datetime, end_date: datetime
+    ) -> list[CalendarEvent]:
+        await self._store.async_events()
+        events: list[CalendarEvent] = []
+        day = start_date.date()
+        while day <= end_date.date():
+            events.extend(self._events_for_day(day))
+            day += timedelta(days=1)
+        return events
+
+    @property
+    def event(self) -> CalendarEvent | None:
+        now = dt_util.now()
+        upcoming: list[CalendarEvent] = []
+        for offset in range(8):
+            upcoming.extend(self._events_for_day((now + timedelta(days=offset)).date()))
+        upcoming.sort(key=lambda e: e.start)
+        for ev in upcoming:
+            if ev.end > now:
+                return ev
+        return None
+
+    async def async_create_event(self, **kwargs: Any) -> None:
+        start = kwargs.get("dtstart")
+        end = kwargs.get("dtend")
+        if not isinstance(start, datetime) or not isinstance(end, datetime):
+            raise HomeAssistantError("Zeitprogramm-Fenster brauchen eine Uhrzeit.")
+        temp = _parse_temp(kwargs.get("summary"))
+        if temp is None:
+            raise HomeAssistantError(
+                'Titel muss die Soll-Temperatur enthalten (z. B. "21 °C").'
+            )
+        weekday = dt_util.as_local(start).weekday()
+        await self._store.async_add(
+            weekday, dt_util.as_local(start).time(), dt_util.as_local(end).time(), temp,
+        )
+        self.async_write_ha_state()
+
+    async def async_update_event(
+        self,
+        uid: str,
+        event: dict[str, Any],
+        recurrence_id: str | None = None,
+        recurrence_range: str | None = None,
+    ) -> None:
+        start = event.get("dtstart")
+        end = event.get("dtend")
+        if not isinstance(start, datetime) or not isinstance(end, datetime):
+            raise HomeAssistantError("Zeitprogramm-Fenster brauchen eine Uhrzeit.")
+        temp = _parse_temp(event.get("summary"))
+        if temp is None:
+            raise HomeAssistantError(
+                'Titel muss die Soll-Temperatur enthalten (z. B. "21 °C").'
+            )
+        weekday = dt_util.as_local(start).weekday()
+        try:
+            await self._store.async_update(
+                uid, weekday,
+                dt_util.as_local(start).time(), dt_util.as_local(end).time(), temp,
+            )
+        except KeyError as err:
+            raise HomeAssistantError(str(err)) from err
+        self.async_write_ha_state()
+
+    async def async_delete_event(
+        self,
+        uid: str,
+        recurrence_id: str | None = None,
+        recurrence_range: str | None = None,
+    ) -> None:
+        await self._store.async_remove(uid)
+        self.async_write_ha_state()
