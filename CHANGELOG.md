@@ -1,6 +1,7 @@
 # Changelog
 
-## 1.6.13
+## 1.7.0
+- New optional **boiler regulation**: for BAI-style boilers with no room controller left on the bus (e.g. after removing an Exacontrol), a `climate` entity now computes a modulating flow-temperature setpoint (heating curve + room PI, see `regulation.py`) from a configurable room and outdoor sensor, and writes it via `SetMode` — no more on/off, real modulation. Opt-in via new Options: room/outdoor sensor, curve slope, Kp/Ki, min/max flow temperature, write interval.
 - Fix: `network.async_get_source_ip` call in config flow used the removed `target` kwarg; renamed to `target_ip` (current HA API).
 - Fix: circuit devices now link to the bridge device via `via_device_id` (resolved registry id) instead of the deprecated `via_device` identifier tuple.
 - Fix: never-polled messages with a `lastup: 0` entry (as opposed to no entry at all) were wrongly treated as already read and never got their initial forced read.
