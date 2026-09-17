@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.7.3
+- Boiler regulation defaults recalibrated for classic radiators with thermostatic valves: curve slope 1.2 → 1.7, minimum flow temperature 30 → 40 °C, maximum flow 55 → 65 °C, no-outdoor-sensor base flow 35 → 45 °C. The old defaults were tuned closer to underfloor heating and produced flow temperatures too low for radiators to emit noticeable heat in mild weather (e.g. ~33 °C at 14 °C outside), even though the boiler was correctly modulating. New defaults are calibrated against a real installation that previously ran ~60 °C flow at 0 °C outside / 22 °C room target. Existing installations keep their already-saved option values; this only changes what new installs see as pre-filled defaults.
+
 ## 1.7.2
 - Boiler regulation now works without an outdoor sensor: it's now optional (only the room sensor is required to enable the feature). Without it, the heating curve is skipped and a configurable base flow temperature (`boiler_base_flow`, default 35 °C) is used instead, with the room PI correction still applying.
 - Fix: `SetMode`'s `hcmode` field is now always kept at `auto`, never set to `off` — `hcmode=off` is a coarse whole-boiler mode switch that likely also disables DHW production, defeating the goal of keeping domestic hot water independent from this entity's heating on/off. Heating is now exclusively gated through the granular `disablehc` bit in every state (user Off, hysteresis-satisfied, or actively heating), leaving `HwcSwitch`/`hwctempdesired` completely unaffected.
