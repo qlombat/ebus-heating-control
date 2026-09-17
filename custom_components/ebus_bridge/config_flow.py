@@ -7,16 +7,31 @@ from homeassistant.components import network
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .client import EbusdClient, EbusdError
 from .const import (
+    CONF_BOILER_CURVE_SLOPE,
+    CONF_BOILER_FLOW_MAX,
+    CONF_BOILER_FLOW_MIN,
+    CONF_BOILER_KI,
+    CONF_BOILER_KP,
+    CONF_BOILER_OUTDOOR_SENSOR,
+    CONF_BOILER_ROOM_SENSOR,
+    CONF_BOILER_WRITE_INTERVAL,
     CONF_EXCLUDE,
     CONF_FAST,
     CONF_HOST,
     CONF_HTTP_PORT,
     CONF_PORT,
     CONF_SCAN_INTERVAL,
+    DEFAULT_BOILER_CURVE_SLOPE,
+    DEFAULT_BOILER_FLOW_MAX,
+    DEFAULT_BOILER_FLOW_MIN,
+    DEFAULT_BOILER_KI,
+    DEFAULT_BOILER_KP,
+    DEFAULT_BOILER_WRITE_INTERVAL,
     DEFAULT_EXCLUDE,
     DEFAULT_FAST,
     DEFAULT_HTTP_PORT,
@@ -101,6 +116,45 @@ class EbusdOptionsFlow(config_entries.OptionsFlow):
                     CONF_FAST,
                     default=opts.get(CONF_FAST, DEFAULT_FAST),
                 ): str,
+                # Kessel-Modulationsregelung: nur aktiv, wenn beide Sensoren
+                # gesetzt sind (siehe climate.py) -- deshalb ohne Default, damit
+                # sie leer bleiben (und der Nutzer sie wieder leeren kann).
+                vol.Optional(
+                    CONF_BOILER_ROOM_SENSOR,
+                    description={"suggested_value": opts.get(CONF_BOILER_ROOM_SENSOR)},
+                ): selector.selector(
+                    {"entity": {"domain": "sensor", "device_class": "temperature"}}
+                ),
+                vol.Optional(
+                    CONF_BOILER_OUTDOOR_SENSOR,
+                    description={"suggested_value": opts.get(CONF_BOILER_OUTDOOR_SENSOR)},
+                ): selector.selector(
+                    {"entity": {"domain": "sensor", "device_class": "temperature"}}
+                ),
+                vol.Optional(
+                    CONF_BOILER_CURVE_SLOPE,
+                    default=opts.get(CONF_BOILER_CURVE_SLOPE, DEFAULT_BOILER_CURVE_SLOPE),
+                ): vol.Coerce(float),
+                vol.Optional(
+                    CONF_BOILER_KP,
+                    default=opts.get(CONF_BOILER_KP, DEFAULT_BOILER_KP),
+                ): vol.Coerce(float),
+                vol.Optional(
+                    CONF_BOILER_KI,
+                    default=opts.get(CONF_BOILER_KI, DEFAULT_BOILER_KI),
+                ): vol.Coerce(float),
+                vol.Optional(
+                    CONF_BOILER_FLOW_MIN,
+                    default=opts.get(CONF_BOILER_FLOW_MIN, DEFAULT_BOILER_FLOW_MIN),
+                ): vol.Coerce(float),
+                vol.Optional(
+                    CONF_BOILER_FLOW_MAX,
+                    default=opts.get(CONF_BOILER_FLOW_MAX, DEFAULT_BOILER_FLOW_MAX),
+                ): vol.Coerce(float),
+                vol.Optional(
+                    CONF_BOILER_WRITE_INTERVAL,
+                    default=opts.get(CONF_BOILER_WRITE_INTERVAL, DEFAULT_BOILER_WRITE_INTERVAL),
+                ): int,
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

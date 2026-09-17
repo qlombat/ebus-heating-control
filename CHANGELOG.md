@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.7.0
+- New optional **boiler regulation**: for BAI-style boilers with no room controller left on the bus (e.g. after removing an Exacontrol), a `climate` entity now computes a modulating flow-temperature setpoint (heating curve + room PI, see `regulation.py`) from a configurable room and outdoor sensor, and writes it via `SetMode` — no more on/off, real modulation. Opt-in via new Options: room/outdoor sensor, curve slope, Kp/Ki, min/max flow temperature, write interval.
+
 ## 1.6.12
 - Catch-up reads now run a few in parallel and use more of each cycle, so entities fill several times faster after a reload.
 

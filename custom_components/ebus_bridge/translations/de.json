@@ -25,7 +25,15 @@
         "data": {
           "scan_interval": "Poll-Intervall (Sekunden)",
           "exclude": "Nachrichtennamen ausschließen (Teilstrings, kommagetrennt, z. B. Timer)",
-          "fast": "Direkt vom Bus lesen (Teilstrings, kommagetrennt) – diese Werte sind so frisch wie das Poll-Intervall. Sparsam einsetzen!"
+          "fast": "Direkt vom Bus lesen (Teilstrings, kommagetrennt) – diese Werte sind so frisch wie das Poll-Intervall. Sparsam einsetzen!",
+          "boiler_room_sensor": "Kesselregelung: Raumtemperatursensor (leer lassen zum Deaktivieren)",
+          "boiler_outdoor_sensor": "Kesselregelung: Außentemperatursensor (leer lassen zum Deaktivieren)",
+          "boiler_curve_slope": "Kesselregelung: Steigung der Heizkurve",
+          "boiler_kp": "Kesselregelung: Proportionalverstärkung (Kp)",
+          "boiler_ki": "Kesselregelung: Integralverstärkung (Ki)",
+          "boiler_flow_min": "Kesselregelung: minimale Vorlauftemperatur (°C)",
+          "boiler_flow_max": "Kesselregelung: maximale Vorlauftemperatur (°C)",
+          "boiler_write_interval": "Kesselregelung: Schreibintervall für SetMode (Sekunden)"
         }
       }
     }

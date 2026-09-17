@@ -38,7 +38,11 @@ definitions); this integration is the HA layer on top.
   when those registers exist.
 - **climate** – one thermostat per active heating zone (curated Vaillant overlay:
   current `Z<n>RoomTemp`, target = comfort `Z<n>DayTemp`, `Z<n>OpMode` → hvac/preset
-  off/auto/day/night).
+  off/auto/day/night). Additionally, an **opt-in modulating boiler regulation**
+  (see [Options](#options)) for BAI-style boilers with no room controller left on
+  the bus: target = room setpoint, current = your chosen external sensor; instead
+  of on/off, it continuously computes a flow-temperature setpoint (heating curve +
+  room PI, see `regulation.py`) and writes it via the `SetMode` command.
 - **calendar** – Vaillant weekly schedules (`<Prefix>Timer_<Day><Slot>`), one calendar
   per program (Z1/Z2/Z3/Hwc/Cc …). Slot = `htm`–`htm_1`, title = target temperature.
   **Editable** (create/update/delete) **once ebusd exposes a writable per-day message
@@ -65,6 +69,10 @@ Integration → **Configure**:
 - **Poll interval** (seconds).
 - **Exclude** – comma-separated name substrings (default `Timer`, so the many schedule
   fields don't show up as sensors — the calendar still uses them).
+- **Boiler regulation** (opt-in, disabled unless both sensors are set) – room and
+  outdoor temperature sensor, heating-curve slope, proportional/integral gain
+  (Kp/Ki), min/max flow temperature, `SetMode` write interval. See
+  `custom_components/ebus_bridge/regulation.py` for the (pure, unit-tested) formula.
 
 ### Installation
 **Via HACS** (recommended): HACS → ⋮ → *Custom repositories* →
@@ -87,6 +95,8 @@ confirm; remote ebusd → override the IP). Ports `8888`/`8889` are preset.
 - `coordinator.py` – definitions once, values cyclically; exclude filter.
 - `entity.py` / `sensor.py` / `binary_sensor.py` / `number.py` / `select.py` /
   `switch.py` / `calendar.py` – the platforms.
+- `regulation.py` – pure (no HA import, unit-tested) heating-curve + room-PI formula
+  used by the optional boiler `climate` entity.
 - `config_flow.py` – host + both ports (tests both) + options flow.
 
 ---
@@ -128,7 +138,11 @@ die eigentliche eBUS-Dekodierung; diese Integration ist die HA-Schicht darüber.
   nur, wenn diese Register existieren.
 - **climate** – ein Thermostat je aktiver Heizzone (kuratierter Vaillant-Overlay:
   Ist `Z<n>RoomTemp`, Soll = Komfort `Z<n>DayTemp`, `Z<n>OpMode` → hvac/preset
-  off/auto/day/night).
+  off/auto/day/night). Zusätzlich eine **optionale modulierende Kesselregelung**
+  (siehe [Optionen](#optionen)) für BAI-Kessel ohne verbleibenden Raumregler am Bus:
+  Soll = Raum-Sollwert, Ist = ein frei wählbarer externer Sensor; statt ein/aus wird
+  laufend ein Vorlauf-Sollwert berechnet (Heizkurve + Raum-PI, siehe `regulation.py`)
+  und über das Kommando `SetMode` geschrieben.
 - **calendar** – Vaillant-Wochen-Zeitprogramme (`<Prefix>Timer_<Tag><Slot>`), je
   Wochenprogramm (Z1/Z2/Z3/Hwc/Cc …) ein Kalender. Fenster = `htm`–`htm_1`,
   Titel = Soll-Temperatur. **Bearbeitbar** (Anlegen/Ändern/Löschen), **sobald ebusd
@@ -157,6 +171,10 @@ Integration → **Konfigurieren**:
 - **Poll-Intervall** (Sekunden).
 - **Ausschluss** – kommagetrennte Namensteile (Default `Timer`, damit die vielen
   Zeitprogramm-Felder nicht als Sensoren erscheinen – der Kalender nutzt sie weiter).
+- **Kesselregelung** (optional, deaktiviert bis beide Sensoren gesetzt sind) – Raum-
+  und Außentemperatursensor, Steigung der Heizkurve, Proportional-/Integralverstärkung
+  (Kp/Ki), minimale/maximale Vorlauftemperatur, Schreibintervall für `SetMode`. Formel
+  (rein, unit-getestet) in `custom_components/ebus_bridge/regulation.py`.
 
 ### Installation
 **Über HACS** (empfohlen): HACS → ⋮ → *Benutzerdefinierte Repositories* →
@@ -179,4 +197,6 @@ Remote-ebusd → IP überschreiben). Ports `8888`/`8889` sind voreingestellt.
 - `coordinator.py` – Definitionen einmalig, Werte zyklisch; Ausschluss-Filter.
 - `entity.py` / `sensor.py` / `binary_sensor.py` / `number.py` / `select.py` /
   `switch.py` / `calendar.py` – die Plattformen.
+- `regulation.py` – reine (kein HA-Import, unit-getestete) Heizkurven-/Raum-PI-Formel
+  für die optionale Kessel-`climate`-Entity.
 - `config_flow.py` – Host + beide Ports (testet beide) + Options-Flow.
