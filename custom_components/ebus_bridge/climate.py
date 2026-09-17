@@ -38,6 +38,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import EbusdError
 from .const import (
+    CONF_BOILER_BASE_FLOW,
     CONF_BOILER_CURVE_SLOPE,
     CONF_BOILER_FLOW_MAX,
     CONF_BOILER_FLOW_MIN,
@@ -47,6 +48,7 @@ from .const import (
     CONF_BOILER_OUTDOOR_SENSOR,
     CONF_BOILER_ROOM_SENSOR,
     CONF_BOILER_WRITE_INTERVAL,
+    DEFAULT_BOILER_BASE_FLOW,
     DEFAULT_BOILER_CURVE_SLOPE,
     DEFAULT_BOILER_FLOW_MAX,
     DEFAULT_BOILER_FLOW_MIN,
@@ -100,14 +102,16 @@ async def async_setup_entry(
 def _build_boiler_climates(
     coordinator: EbusdCoordinator, entry: ConfigEntry
 ) -> list[EbusdBoilerClimate]:
-    """Kessel-Regelung: nur anlegen, wenn Raum- UND Außensensor konfiguriert sind.
+    """Kessel-Regelung: nur anlegen, wenn ein Raumsensor konfiguriert ist.
 
-    Opt-in per Options-Flow -- ohne beide Sensoren gibt es keinen sinnvollen
+    Opt-in per Options-Flow -- ohne Raumsensor gibt es keinen sinnvollen
     Sollwert zu berechnen, also lieber gar keine Entity als eine kaputte.
+    Der Außensensor ist optional (siehe `regulation.compute_flow_setpoint`):
+    fehlt er, entfällt nur die Heizkurve, die Raum-PI-Regelung läuft trotzdem.
     """
     room_sensor = entry.options.get(CONF_BOILER_ROOM_SENSOR)
-    outdoor_sensor = entry.options.get(CONF_BOILER_OUTDOOR_SENSOR)
-    if not room_sensor or not outdoor_sensor:
+    outdoor_sensor = entry.options.get(CONF_BOILER_OUTDOOR_SENSOR) or None
+    if not room_sensor:
         return []
 
     circuits: dict[str, set[str]] = {}
@@ -129,6 +133,9 @@ def _build_boiler_climates(
         ),
         hysteresis=float(
             entry.options.get(CONF_BOILER_HYSTERESIS, DEFAULT_BOILER_HYSTERESIS)
+        ),
+        base_flow=float(
+            entry.options.get(CONF_BOILER_BASE_FLOW, DEFAULT_BOILER_BASE_FLOW)
         ),
     )
     interval = int(
@@ -271,7 +278,14 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
     kommt von einem frei wählbaren externen Sensor. Statt nur ein/aus zu schalten,
     wird periodisch ein selbst berechneter Vorlauf-Sollwert (Heizkurve + Raum-PI,
     siehe `regulation.py`) über das eBUS-Kommando `SetMode` geschrieben --
-    modulierend, wie es die BAI-Kesselelektronik selbst erwartet.
+    modulierend, wie es die BAI-Kesselelektronik selbst erwartet. Der
+    Außensensor ist optional: fehlt er, entfällt nur die Heizkurve (reine
+    Raum-PI-Regelung um `params.base_flow`).
+
+    Betrifft ausschließlich die Heizfunktion (`disablehc`-Bit) -- die
+    Warmwasserbereitung (`HwcSwitch`, `hwctempdesired`) bleibt davon in jedem
+    Zustand dieser Entity (auch HVACMode.OFF) komplett unberührt, siehe
+    `regulation.format_setmode`.
 
     Jeder Zyklus schreibt neu, unabhängig davon, ob sich etwas geändert hat --
     das dient zugleich als Lebenszeichen für den Kessel (Failsafe-Verhalten bei
@@ -296,7 +310,7 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
         coordinator: EbusdCoordinator,
         circuit: str,
         room_sensor: str,
-        outdoor_sensor: str,
+        outdoor_sensor: str | None,
         params: RegulationParams,
         write_interval: int,
     ) -> None:
@@ -414,13 +428,24 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
         flow_setpoint: float | None = None
         if active:
             self._update_current_temperature()
-            outdoor = self._read_temperature(self._outdoor_sensor)
-            if self._attr_current_temperature is None or outdoor is None:
+            if self._attr_current_temperature is None:
                 _LOGGER.warning(
-                    "%s: Raum- oder Außensensor nicht verfügbar, Regelzyklus "
-                    "übersprungen", self.entity_id,
+                    "%s: Raumsensor nicht verfügbar, Regelzyklus übersprungen",
+                    self.entity_id,
                 )
                 return
+            outdoor: float | None = None
+            if self._outdoor_sensor:
+                outdoor = self._read_temperature(self._outdoor_sensor)
+                if outdoor is None:
+                    _LOGGER.warning(
+                        "%s: Außensensor konfiguriert, aber nicht verfügbar -- "
+                        "Regelzyklus übersprungen", self.entity_id,
+                    )
+                    return
+            # outdoor bleibt None, wenn gar kein Außensensor konfiguriert ist --
+            # compute_flow_setpoint() nutzt dann params.base_flow statt der
+            # Heizkurve (siehe regulation.py).
             self._calling_for_heat = should_call_for_heat(
                 target_room=self._attr_target_temperature,
                 current_room=self._attr_current_temperature,
@@ -438,7 +463,7 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
             flow_setpoint = result.flow_setpoint
         else:
             self._calling_for_heat = False
-        value = format_setmode(flow_setpoint, active, self._calling_for_heat)
+        value = format_setmode(flow_setpoint, self._calling_for_heat)
         try:
             await self.coordinator.client.write(self._circuit, "SetMode", value)
         except EbusdError as err:

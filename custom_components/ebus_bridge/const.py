@@ -20,6 +20,7 @@ CONF_BOILER_FLOW_MIN = "boiler_flow_min"
 CONF_BOILER_FLOW_MAX = "boiler_flow_max"
 CONF_BOILER_WRITE_INTERVAL = "boiler_write_interval"
 CONF_BOILER_HYSTERESIS = "boiler_hysteresis"
+CONF_BOILER_BASE_FLOW = "boiler_base_flow"
 
 DEFAULT_PORT = 8888  # TCP-Kommandoport (Schreiben)
 DEFAULT_HTTP_PORT = 8889  # HTTP-JSON-Port (Lesen/Definitionen)
@@ -41,3 +42,6 @@ DEFAULT_BOILER_WRITE_INTERVAL = 60
 # Wie weit die Konsigne überschritten werden darf, bevor die Wärmeanforderung
 # stoppt (siehe regulation.should_call_for_heat) -- verhindert Kurzzyklen.
 DEFAULT_BOILER_HYSTERESIS = 0.3
+# Feste Vorlauf-Basis, wenn kein Außensensor konfiguriert ist (siehe
+# regulation.compute_flow_setpoint) -- moderater Radiator-Vorlauf als Startpunkt.
+DEFAULT_BOILER_BASE_FLOW = 35.0

@@ -32,6 +32,22 @@ def test_curve_only_when_room_at_target():
     assert result.integral == 0.0
 
 
+def test_no_outdoor_sensor_falls_back_to_base_flow():
+    # outdoor_temp=None (kein Sensor konfiguriert) -> Heizkurve entfällt,
+    # base_flow ist die feste Basis, nur die Raum-PI wirkt noch.
+    params = _params(base_flow=35.0, ki=0.0)  # ki=0: reiner P-Anteil, leicht nachrechenbar
+    result = regulation.compute_flow_setpoint(
+        target_room=20.0, current_room=20.0, outdoor_temp=None,
+        integral=0.0, params=params,
+    )
+    assert result.flow_setpoint == 35.0
+    warmer = regulation.compute_flow_setpoint(
+        target_room=20.0, current_room=19.0, outdoor_temp=None,
+        integral=0.0, params=params,
+    )
+    assert warmer.flow_setpoint == 35.0 + params.kp * 1.0
+
+
 def test_positive_error_raises_flow_setpoint():
     # Raum zu kalt (Fehler > 0) -> Vorlauf soll steigen.
     baseline = regulation.compute_flow_setpoint(
@@ -81,24 +97,24 @@ def test_flow_setpoint_clamped_to_bounds():
     assert too_cold.flow_setpoint == 30.0
 
 
-def test_format_setmode_active_sets_hcmode_auto_and_flow():
+def test_format_setmode_calling_for_heat_sets_hcmode_auto_and_flow():
     assert (
-        regulation.format_setmode(30.0, active=True)
+        regulation.format_setmode(30.0, calling_for_heat=True)
         == "auto;30.0;-;-;0;0;0;0;0;0"
     )
 
 
-def test_format_setmode_inactive_sets_hcmode_off():
-    assert regulation.format_setmode(30.0, active=False) == "off;-;-;-;0;0;0;0;0;0"
-    assert regulation.format_setmode(None, active=True) == "off;-;-;-;0;0;0;0;0;0"
-
-
-def test_format_setmode_satisfied_sets_disablehc_keeps_hcmode_auto():
-    # Konsigne erreicht (Hysterese) -> Heizung sperren, aber hcmode bleibt "auto"
-    # (WW-Bereitung unangetastet), kein kompletter HVACMode.OFF nötig.
+def test_format_setmode_not_calling_for_heat_sets_disablehc_keeps_hcmode_auto():
+    # Egal ob Nutzer-Off oder Hysterese-Satt: hcmode bleibt IMMER "auto" (WW
+    # bleibt über HwcSwitch/hwctempdesired unabhängig funktionsfähig), nur das
+    # granulare disablehc-Bit sperrt die Heizfunktion.
     assert (
-        regulation.format_setmode(30.0, active=True, calling_for_heat=False)
-        == "auto;30.0;-;-;1;0;0;0;0;0"
+        regulation.format_setmode(30.0, calling_for_heat=False)
+        == "auto;-;-;-;1;0;0;0;0;0"
+    )
+    assert (
+        regulation.format_setmode(None, calling_for_heat=True)
+        == "auto;-;-;-;1;0;0;0;0;0"
     )
 
 

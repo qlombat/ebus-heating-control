@@ -12,6 +12,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .client import EbusdClient, EbusdError
 from .const import (
+    CONF_BOILER_BASE_FLOW,
     CONF_BOILER_CURVE_SLOPE,
     CONF_BOILER_FLOW_MAX,
     CONF_BOILER_FLOW_MIN,
@@ -27,6 +28,7 @@ from .const import (
     CONF_HTTP_PORT,
     CONF_PORT,
     CONF_SCAN_INTERVAL,
+    DEFAULT_BOILER_BASE_FLOW,
     DEFAULT_BOILER_CURVE_SLOPE,
     DEFAULT_BOILER_FLOW_MAX,
     DEFAULT_BOILER_FLOW_MIN,
@@ -118,9 +120,12 @@ class EbusdOptionsFlow(config_entries.OptionsFlow):
                     CONF_FAST,
                     default=opts.get(CONF_FAST, DEFAULT_FAST),
                 ): str,
-                # Kessel-Modulationsregelung: nur aktiv, wenn beide Sensoren
-                # gesetzt sind (siehe climate.py) -- deshalb ohne Default, damit
-                # sie leer bleiben (und der Nutzer sie wieder leeren kann).
+                # Kessel-Modulationsregelung: nur aktiv, wenn ein Raumsensor
+                # gesetzt ist (siehe climate.py) -- deshalb ohne Default, damit
+                # er leer bleiben kann (Nutzer kann ihn wieder leeren). Der
+                # Außensensor ist zusätzlich optional: ohne ihn entfällt nur die
+                # Heizkurve, die Raum-PI-Regelung läuft trotzdem (siehe
+                # regulation.compute_flow_setpoint).
                 vol.Optional(
                     CONF_BOILER_ROOM_SENSOR,
                     description={"suggested_value": opts.get(CONF_BOILER_ROOM_SENSOR)},
@@ -136,6 +141,10 @@ class EbusdOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_BOILER_CURVE_SLOPE,
                     default=opts.get(CONF_BOILER_CURVE_SLOPE, DEFAULT_BOILER_CURVE_SLOPE),
+                ): vol.Coerce(float),
+                vol.Optional(
+                    CONF_BOILER_BASE_FLOW,
+                    default=opts.get(CONF_BOILER_BASE_FLOW, DEFAULT_BOILER_BASE_FLOW),
                 ): vol.Coerce(float),
                 vol.Optional(
                     CONF_BOILER_KP,

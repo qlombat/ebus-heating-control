@@ -42,7 +42,10 @@ definitions); this integration is the HA layer on top.
   (see [Options](#options)) for BAI-style boilers with no room controller left on
   the bus: target = room setpoint, current = your chosen external sensor; instead
   of on/off, it continuously computes a flow-temperature setpoint (heating curve +
-  room PI, see `regulation.py`) and writes it via the `SetMode` command.
+  room PI, see `regulation.py`) and writes it via the `SetMode` command. The outdoor
+  sensor is optional (falls back to a fixed base flow temperature + room PI only).
+  Only ever toggles the `disablehc` bit, never `hcmode=off`, so DHW production stays
+  fully independent from this entity in every state.
 - **calendar** – Vaillant weekly schedules (`<Prefix>Timer_<Day><Slot>`), one calendar
   per program (Z1/Z2/Z3/Hwc/Cc …). Slot = `htm`–`htm_1`, title = target temperature.
   **Editable** (create/update/delete) **once ebusd exposes a writable per-day message
@@ -69,11 +72,12 @@ Integration → **Configure**:
 - **Poll interval** (seconds).
 - **Exclude** – comma-separated name substrings (default `Timer`, so the many schedule
   fields don't show up as sensors — the calendar still uses them).
-- **Boiler regulation** (opt-in, disabled unless both sensors are set) – room and
-  outdoor temperature sensor, heating-curve slope, proportional/integral gain
-  (Kp/Ki), min/max flow temperature, heat-demand hysteresis (stops calling for
-  heat once the room overshoots the setpoint by this margin, resumes once it
-  drops back below), `SetMode` write interval. See
+- **Boiler regulation** (opt-in, disabled unless a room sensor is set) – room sensor
+  (required to enable) and outdoor sensor (optional, enables the heating curve;
+  without it, a fixed base flow temperature is used instead), curve slope,
+  proportional/integral gain (Kp/Ki), min/max flow temperature, heat-demand
+  hysteresis (stops calling for heat once the room overshoots the setpoint by this
+  margin, resumes once it drops back below), `SetMode` write interval. See
   `custom_components/ebus_bridge/regulation.py` for the (pure, unit-tested) formula.
 
 ### Installation
@@ -144,7 +148,10 @@ die eigentliche eBUS-Dekodierung; diese Integration ist die HA-Schicht darüber.
   (siehe [Optionen](#optionen)) für BAI-Kessel ohne verbleibenden Raumregler am Bus:
   Soll = Raum-Sollwert, Ist = ein frei wählbarer externer Sensor; statt ein/aus wird
   laufend ein Vorlauf-Sollwert berechnet (Heizkurve + Raum-PI, siehe `regulation.py`)
-  und über das Kommando `SetMode` geschrieben.
+  und über das Kommando `SetMode` geschrieben. Der Außensensor ist optional (ohne ihn
+  eine feste Vorlauf-Basis + Raum-PI). Schaltet Heizung ausschließlich über das
+  `disablehc`-Bit, nie über `hcmode=off` -- die WW-Bereitung bleibt in jedem Zustand
+  dieser Entity unabhängig funktionsfähig.
 - **calendar** – Vaillant-Wochen-Zeitprogramme (`<Prefix>Timer_<Tag><Slot>`), je
   Wochenprogramm (Z1/Z2/Z3/Hwc/Cc …) ein Kalender. Fenster = `htm`–`htm_1`,
   Titel = Soll-Temperatur. **Bearbeitbar** (Anlegen/Ändern/Löschen), **sobald ebusd
@@ -173,8 +180,9 @@ Integration → **Konfigurieren**:
 - **Poll-Intervall** (Sekunden).
 - **Ausschluss** – kommagetrennte Namensteile (Default `Timer`, damit die vielen
   Zeitprogramm-Felder nicht als Sensoren erscheinen – der Kalender nutzt sie weiter).
-- **Kesselregelung** (optional, deaktiviert bis beide Sensoren gesetzt sind) – Raum-
-  und Außentemperatursensor, Steigung der Heizkurve, Proportional-/Integralverstärkung
+- **Kesselregelung** (optional, deaktiviert bis ein Raumsensor gesetzt ist) – Raumsensor
+  (nötig zum Aktivieren) und Außensensor (optional, aktiviert die Heizkurve; ohne ihn
+  eine feste Vorlauf-Basis), Steigung der Heizkurve, Proportional-/Integralverstärkung
   (Kp/Ki), minimale/maximale Vorlauftemperatur, Hysterese der Wärmeanforderung (stoppt
   die Anforderung, sobald der Raum die Konsigne um diese Marge überschreitet, und nimmt
   sie erst wieder auf, wenn er darunter fällt), Schreibintervall für `SetMode`. Formel

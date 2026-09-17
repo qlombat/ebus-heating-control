@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.2
+- Boiler regulation now works without an outdoor sensor: it's now optional (only the room sensor is required to enable the feature). Without it, the heating curve is skipped and a configurable base flow temperature (`boiler_base_flow`, default 35 °C) is used instead, with the room PI correction still applying.
+- Fix: `SetMode`'s `hcmode` field is now always kept at `auto`, never set to `off` — `hcmode=off` is a coarse whole-boiler mode switch that likely also disables DHW production, defeating the goal of keeping domestic hot water independent from this entity's heating on/off. Heating is now exclusively gated through the granular `disablehc` bit in every state (user Off, hysteresis-satisfied, or actively heating), leaving `HwcSwitch`/`hwctempdesired` completely unaffected.
+
 ## 1.7.1
 - Fix: boiler regulation never actually stopped calling for heat once the room reached its setpoint — the heating-curve formula alone always returns a flow temperature > 0. Added a heat-demand hysteresis (`should_call_for_heat`, new option `boiler_hysteresis`, default 0.3 °C): once the room exceeds target by this margin, `SetMode`'s `disablehc` bit is set (DHW stays unaffected) until it drops back below target.
 
