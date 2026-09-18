@@ -1,4 +1,4 @@
-# eBUS Bridge (Home Assistant)
+# eBUS Heating Control (Home Assistant)
 
 **Local eBUS heating integration for Home Assistant — no cloud, no MQTT.**
 
@@ -50,7 +50,7 @@ Boiler / heat pump (eBUS)
  eBUS adapter (Wi-Fi / serial / USB)
         │
         ▼
- ebusd  ── HTTP-JSON :8889 (read + definitions) ──▶  eBUS Bridge (this integration)
+ ebusd  ── HTTP-JSON :8889 (read + definitions) ──▶  eBUS Heating Control (this integration)
         └─ TCP command port :8888 (write) ────────▶
                                                           │
                                                           ▼
@@ -86,12 +86,12 @@ No MQTT broker is required anywhere in this chain.
 **Via HACS** (recommended):
 1. HACS → ⋮ → *Custom repositories* → add `https://github.com/qlombat/ebus-heating-control`,
    category *Integration*.
-2. Install **eBUS Bridge** from HACS → restart Home Assistant.
+2. Install **eBUS Heating Control** from HACS → restart Home Assistant.
 
 **Manual:** copy `custom_components/ebus_bridge/` into
 `<config>/custom_components/ebus_bridge/` → restart Home Assistant.
 
-Then: **Settings → Devices & Services → Add integration → "eBUS Bridge"**. The
+Then: **Settings → Devices & Services → Add integration → "eBUS Heating Control"**. The
 **host field is pre-filled with the Home Assistant host IP** (if ebusd runs locally
 as an add-on, just confirm; for a remote ebusd, override the IP). Ports `8888`/`8889`
 are pre-filled with the defaults.
@@ -160,7 +160,7 @@ Two behaviours are deliberate design choices, verified against real hardware:
 
 Boiler regulation is **opt-in and disabled by default** — it only appears once a
 **room temperature sensor** is configured in **Settings → Devices & services →
-eBUS Bridge → Configure**:
+eBUS Heating Control → Configure**:
 
 | Option | Default | Description |
 |---|---|---|
@@ -210,7 +210,7 @@ the `climate` and `calendar` entities so edits apply on the very next cycle.
 
 ## Options
 
-**Settings → Devices & services → eBUS Bridge → Configure**:
+**Settings → Devices & services → eBUS Heating Control → Configure**:
 
 | Option | Default | Description |
 |---|---|---|
@@ -234,7 +234,7 @@ data:
 
 - `circuit` / `message` — target the eBUS message (as shown in ebusd's `/data`).
 - `value` — separate multiple fields with `;` (e.g. `0;3;06:00;22:00;20.0`).
-- `entry_id` — optional, only needed with more than one eBUS Bridge config entry.
+- `entry_id` — optional, only needed with more than one eBUS Heating Control config entry.
 
 Reads the value back after writing and returns it as the service response. Lets you
 set **any** writable ebusd message, including ones with no dedicated entity yet.

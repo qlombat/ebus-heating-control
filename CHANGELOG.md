@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.8.3
+- Display name aligned with the new repo name: `eBUS Bridge` → `eBUS Heating Control` (manifest `name`, `hacs.json`, config flow title in `strings.json`/`en.json`/`de.json`, README). The integration's internal `domain` (`ebus_bridge`) and its device/entity IDs are unchanged, so existing installs and automations referencing them are unaffected.
+
 ## 1.8.2
 - Repo renamed to `qlombat/ebus-heating-control` (was `qlombat/ebus_bridge`); `manifest.json` (`documentation`, `issue_tracker`) and the README's HACS custom-repository install instructions updated accordingly. The integration's internal `domain` (`ebus_bridge`) is unchanged, since that's the identifier Home Assistant already stores for existing installs and renaming it would break them.
 - CI: pinned `ruff==0.16.8` in `validate.yml` (was unpinned, so CI silently picked up a much newer ruff than tested locally and started failing on new default lints); fixed the resulting `I001` (import order) and `RUF012` (mutable class-level default) findings in `climate.py`/`services.py`.
