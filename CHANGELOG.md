@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.1
+- Boiler regulation now skips writing `SetMode` entirely while the boiler's physical/global winter-mode switch (`HeatingSwitch`) is off, instead of writing every cycle regardless. ebusd's log showed periodic `send to 08: ERR: read timeout, retry` bus errors that correlated with `HeatingSwitch` being off (the boiler appears to respond more sluggishly on the bus in that state); `SetMode` has no effect anyway while this switch is off, so there is no reason to keep sending it.
+- Fix: `EbusdBoilerClimate`'s flame-status lookup used the wrong field key (`(circuit, "Flame", "Flame")` instead of `(circuit, "Flame", "value")`, since ebusd's JSON names single-field messages' field "value", not the message name), so `hvac_action` never actually reported HEATING/IDLE from the real flame state.
+
 ## 1.8.0
 - New: optional weekly heating schedule for the boiler regulation `climate` entity. A new `calendar` entity ("Heating schedule") appears next to it whenever boiler regulation is enabled, editable via HA's standard calendar UI (create/update/delete events; event title = target temperature, e.g. "21 °C"). Each event is a recurring weekly slot (day of week + time window), stored locally (not on the eBUS device). The active slot's temperature is applied automatically; manually changing the target temperature on the climate entity temporarily overrides the schedule until the next slot change, then the schedule resumes. Windows spanning midnight (e.g. 22:00-06:00) are supported.
 - New pure `schedule.py` module (unit-tested, no HA dependency) computing which schedule slot is active; persistence lives in `schedule_store.py`.

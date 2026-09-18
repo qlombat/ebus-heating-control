@@ -310,7 +310,11 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
 
     Jeder Zyklus schreibt neu, unabhängig davon, ob sich etwas geändert hat --
     das dient zugleich als Lebenszeichen für den Kessel (Failsafe-Verhalten bei
-    Ausfall von HA/ebusd liegt dann an dessen eigener Elektronik).
+    Ausfall von HA/ebusd liegt dann an dessen eigener Elektronik). Ausnahme:
+    steht der physische/globale Wintermodus-Schalter (`HeatingSwitch`) auf aus,
+    wird gar nicht erst geschrieben -- der Kessel reagiert dann öfter träge auf
+    den Bus (mehr "read timeout" in ebusds Log), und SetMode bewirkt ohnehin
+    nichts, solange dieser Schalter steht.
     """
 
     _attr_has_entity_name = True
@@ -343,7 +347,10 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
         self._params = params
         self._write_interval = write_interval
         self._schedule_store = schedule_store
-        self._flame_key = (circuit, "Flame", "Flame")
+        # Feldname in ebusds JSON ist für generische Einzelfeld-Nachrichten
+        # "value" (nicht der Nachrichtenname) -- am realen Gerät verifiziert.
+        self._flame_key = (circuit, "Flame", "value")
+        self._heating_switch_key = (circuit, "HeatingSwitch", "value")
         self._integral = 0.0
         self._calling_for_heat = False
         # Wochenprogramm: sobald der Nutzer manuell eine Temperatur setzt, gilt
@@ -500,6 +507,22 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
 
     async def _async_regulate(self, _now: Any = None) -> None:
         await self._apply_schedule()
+        heating_switch = self.coordinator.data.get(self._heating_switch_key)
+        if heating_switch is not None and str(heating_switch).lower() == "off":
+            # Physischer/globaler Wintermodus-Schalter ist aus: der Kessel
+            # reagiert dann öfter träger auf den Bus (mehr "read timeout" in
+            # ebusds Log). SetMode würde ohnehin nichts bewirken, solange
+            # dieser Schalter steht -- also gar nicht erst schreiben, statt
+            # ihn zusätzlich mit Anfragen zu behelligen. `None` (Feld noch
+            # nicht gelesen/Nachricht auf diesem Gerät nicht vorhanden) blockt
+            # NICHT, damit ohne dieses Register normal weiter geregelt wird.
+            self._calling_for_heat = False
+            self.async_write_ha_state()
+            _LOGGER.debug(
+                "%s: HeatingSwitch ist aus, SetMode-Schreiben übersprungen",
+                self.entity_id,
+            )
+            return
         active = self.hvac_mode == HVACMode.HEAT
         flow_setpoint: float | None = None
         if active:
