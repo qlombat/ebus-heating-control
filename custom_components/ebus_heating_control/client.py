@@ -1,4 +1,4 @@
-"""ebusd-Client: Lesen/Definitionen via HTTP-JSON (8889), Schreiben via TCP (8888)."""
+"""ebusd client: read/definitions via HTTP-JSON (8889), write via TCP (8888)."""
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +10,7 @@ from .model import FieldDesc, parse_definitions, parse_device_meta, parse_values
 
 
 class EbusdError(Exception):
-    """Fehler bei der Kommunikation mit ebusd."""
+    """Error communicating with ebusd."""
 
 
 class EbusdClient:
@@ -22,11 +22,11 @@ class EbusdClient:
         session: aiohttp.ClientSession,
     ) -> None:
         self._host = host
-        self._port = port  # TCP-Kommandoport (Schreiben)
-        self._http_port = http_port  # HTTP-JSON (Lesen/Def)
+        self._port = port  # TCP command port (write)
+        self._http_port = http_port  # HTTP-JSON (read/definitions)
         self._session = session
 
-    # ---- HTTP-JSON (Lesen) -------------------------------------------------
+    # ---- HTTP-JSON (read) ---------------------------------------------------
     async def _get(self, query: str) -> dict[str, Any]:
         url = f"http://{self._host}:{self._http_port}/data{query}"
         try:
@@ -48,24 +48,24 @@ class EbusdClient:
         return parse_values(await self._get(""))
 
     async def get_data(self) -> dict[str, Any]:
-        """Rohes /data (Werte + globaler Abschnitt).
+        """Raw /data (values + global section).
 
-        `full` liefert zusätzlich `lastup` je Nachricht -> Grundlage dafür,
-        selbst zu erkennen, welche Werte der Bus ohnehin frisch hält.
-        Nicht `verbose`: das schaltet nur Einheiten und Kommentare zu
-        (mainloop.cpp; `lastup` hängt an OF_ALL_ATTRS, also an `full`).
+        `full` additionally provides `lastup` per message -> the basis for
+        detecting ourselves which values the bus already keeps fresh.
+        Not `verbose`: that only toggles units and comments
+        (mainloop.cpp; `lastup` hangs off OF_ALL_ATTRS, i.e. `full`).
         """
         return await self._get("?full")
 
     async def refresh(self, circuit: str, message: str, max_age: int) -> None:
-        """Nachricht direkt vom Bus lesen, falls der Cache älter als `max_age` ist.
+        """Read a message directly from the bus if the cache is older than `max_age`.
 
-        ebusd führt den Bus-Read dabei blockierend aus (mainloop.cpp: readFromBus),
-        deshalb nur für wenige, wirklich zeitkritische Nachrichten verwenden.
+        ebusd performs this bus read in a blocking way (mainloop.cpp: readFromBus),
+        so only use it for a few genuinely time-critical messages.
         """
         await self._get(f"/{circuit}/{message}?exact=1&required=1&maxage={max_age}")
 
-    # ---- TCP (Schreiben + Verbindungstest) ---------------------------------
+    # ---- TCP (write + connection test) --------------------------------------
     async def _command(self, cmd: str) -> list[str]:
         try:
             reader, writer = await asyncio.wait_for(
@@ -99,10 +99,10 @@ class EbusdClient:
         await self._command(f"write -c {circuit} {message} {value}")
 
     async def read(self, circuit: str, message: str) -> None:
-        """Erzwingt einen frischen Read vom Bus (aktualisiert ebusds Cache -> /data)."""
+        """Force a fresh read from the bus (updates ebusd's cache -> /data)."""
         await self._command(f"read -f -c {circuit} {message}")
 
     async def test(self) -> None:
-        """Prüft beide Ports (HTTP lesen + TCP erreichbar)."""
+        """Checks both ports (HTTP read + TCP reachable)."""
         await self._get("")  # HTTP 8889
         await self._command("info")  # TCP 8888

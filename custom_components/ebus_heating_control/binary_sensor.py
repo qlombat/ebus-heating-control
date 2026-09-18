@@ -1,4 +1,4 @@
-"""Binary-Sensor-Plattform: nicht-schreibbare On/Off-Felder + Bus-Signal."""
+"""Binary sensor platform: non-writable on/off fields + bus signal."""
 from __future__ import annotations
 
 from homeassistant.components.binary_sensor import (
@@ -45,7 +45,7 @@ class EbusdBinarySensor(EbusdBaseEntity, BinarySensorEntity):
 
 
 class EbusdSignalSensor(CoordinatorEntity[EbusdCoordinator], BinarySensorEntity):
-    """Bus-Signal des Adapters (globaler ebusd-Abschnitt), hängt an der Bridge."""
+    """Adapter bus signal (global ebusd section), attached to the bridge."""
 
     _attr_has_entity_name = True
     _attr_name = "Signal"

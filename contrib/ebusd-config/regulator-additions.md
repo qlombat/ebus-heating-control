@@ -1,53 +1,56 @@
-# Zusatz-Register für Regler-Entscheidungen (feldverifiziert)
+# Additional registers for regulator decisions (field-verified)
 
-Diese Zeilen machen Entscheidungen des sensoCOMFORT (ctlv3) und der Wärmepumpe
-(HMU) als HA-Entitäten sichtbar. Jede ist am echten Gerät per Roh-Lesung
-(`ebusctl hex …`) gegengeprüft – keine geratenen Offsets.
+These lines make decisions from the sensoCOMFORT (ctlv3) and the heat pump
+(HMU) visible as HA entities. Each one is cross-checked on the real device via
+raw reads (`ebusctl hex …`) -- no guessed offsets.
 
-Anhängen an die jeweils genannte CSV im ebusd-Config-Ordner, dann ebusd neu
-starten. Die eBUS Heating Control-Integration legt die Entitäten danach selbst an.
+Append to the CSV named in each section, in the ebusd config folder, then
+restart ebusd. The eBUS Heating Control integration then creates the entities
+on its own.
 
-## 1) Warmwasser-Statuscode lesbar — in `38.v32.csv`
-Werte-Tabelle DIREKT an die vorhandene `Statenumber`-Zeile hängen; KEINE zweite
-Nachricht aufs selbe Register 0dab00 (ebusd lehnt Duplikate ab -> lädt still
-nicht). 24 = Warmwasser feldverifiziert (14,45 kW + Vorlauf 57 °C zeitgleich mit
-Statenumber 31→24). Zeigt dann Klartext statt Zahl; Automationen matchen Tokens.
+## 1) Domestic hot water status code, readable -- in `38.v32.csv`
+Append the value table DIRECTLY to the existing `Statenumber` line; NO second
+message on the same register 0dab00 (ebusd rejects duplicates -> loads
+silently without it). 24 = domestic hot water, field-verified (14.45 kW +
+57 °C flow observed simultaneously with Statenumber 31→24). Then shows plain
+text instead of a number; automations match on the tokens.
 
-## 2) Zusatzheizer-Freigabe der WP → `08.hmu.HW5103.csv`
-`releasebackup` ist Bit 1 von Byte 7 der SetMode-Schreibnachricht (b510/00).
-Wird passiv mitgehört (`u`), kein aktiver Bus-Read. Aufbau aus `find -f`:
-Byte0 hcmode · 1 flowtemp · 2 hwctemp · 3 hwcflowtemp · 4 IGN · 5 disable-Bits ·
+## 2) Heat pump backup-heater release -- `08.hmu.HW5103.csv`
+`releasebackup` is bit 1 of byte 7 of the SetMode write message (b510/00).
+Passively overheard (`u`), no active bus read. Layout from `find -f`:
+byte0 hcmode · 1 flowtemp · 2 hwctemp · 3 hwcflowtemp · 4 IGN · 5 disable bits ·
 6 IGN · 7 {remotecontrolhcpump=0, releasebackup=1, releasecooling=2}.
 
-OFFEN: exaktes Datei-Spaltenformat der 08.hmu prüfen, bevor die Zeile steht
-(nicht `find -f`-Format übernehmen). Zudem liegt sie auf b510/00 wie SetMode –
-ob ebusd eine zweite Nachricht aufs selbe Register zulässt, ist zu testen
-(Statenumber/StatenumberText hat gezeigt: Duplikate werden abgelehnt).
-Feld-Bitlage steht fest: Bit 1 von Byte 7 (`IGN:7` + `BI1:1`).
+OPEN: verify the exact file column format of 08.hmu before finalizing the
+line (don't copy the `find -f` format as-is). It also sits on b510/00 like
+SetMode -- whether ebusd allows a second message on the same register still
+needs testing (Statenumber/StatenumberText has shown: duplicates are
+rejected). The field's bit position is confirmed: bit 1 of byte 7
+(`IGN:7` + `BI1:1`).
 
-Vorbehalt: das ist die *interne* Zusatzheizer-Freigabe der Wärmepumpe – nicht
-zwingend das Signal für den externen eloBlock (Adresse 38), den der Regler
-direkt über dessen FlowTempDemand ansteuert.
+Caveat: this is the heat pump's *internal* backup-heater release -- not
+necessarily the signal for the external eloBlock (address 38), which the
+regulator drives directly via its FlowTempDemand.
 
-## 3) Legionellenschutz Zeit + Tag → `15.ctlv3.csv`
-ID-Schema an `HwcTempDesired` verifiziert (`@base 0x24,0x2,RW,BLOCK,SUB` +
-`@ext REG` → b524-ID `02 RW BLOCK SUB REG 00`). Roh-Lesung bestätigt Aufbau
-`IGN:4` (Echo) + Wert:
+## 3) Legionella protection time + day -- `15.ctlv3.csv`
+ID scheme verified against `HwcTempDesired` (`@base 0x24,0x2,RW,BLOCK,SUB` +
+`@ext REG` → b524 ID `02 RW BLOCK SUB REG 00`). Raw read confirms the layout
+`IGN:4` (echo) + value:
 
-- Zeit `0x2a`: Antwort `07 0300 2a00 04 00 00` → HTI `04:00:00`
-- Tag  `0x2b`: Antwort `06 0300 2b00 00 00`   → daysel 0 = **off** (Schutz aus)
+- Time `0x2a`: response `07 0300 2a00 04 00 00` → HTI `04:00:00`
+- Day  `0x2b`: response `06 0300 2b00 00 00`   → daysel 0 = **off** (protection disabled)
 
-WICHTIG: im DATEI-Format schreiben (leere circuit- UND level-Spalte, leeres
-part), NICHT im `ebusctl find -f`-Format. `find -f` lässt die level-Spalte weg
-und zeigt circuit/zz explizit -> so übernommen verrutschen alle Spalten und
-ebusd verwirft die Zeile still. Vorlage ist eine echte Datei-Zeile (z. B.
+IMPORTANT: write in the FILE format (empty circuit AND level columns, empty
+part), NOT in `ebusctl find -f` format. `find -f` omits the level column and
+shows circuit/zz explicitly -> copying it as-is shifts every column and ebusd
+silently discards the line. Use a real file line as a template (e.g.
 `ContinuousHeating` in 15.ctlv3.csv).
 
 ```csv
-r,,,HwcLegionellaTime,Legionellenschutz Uhrzeit,,,b524,020000002a00,ign,,IGN:4,,,,value,,HTI,,,
-r,,,HwcLegionellaDay,Legionellenschutz Wochentag,,,b524,020000002b00,ign,,IGN:4,,,,value,,UIN,0=off;1=Mo;2=Di;3=Mi;4=Do;5=Fr;6=Sa;7=So;8=taeglich,,
+r,,,HwcLegionellaTime,Legionella protection time,,,b524,020000002a00,ign,,IGN:4,,,,value,,HTI,,,
+r,,,HwcLegionellaDay,Legionella protection weekday,,,b524,020000002b00,ign,,IGN:4,,,,value,,UIN,0=off;1=Mon;2=Tue;3=Wed;4=Thu;5=Fri;6=Sat;7=Sun;8=daily,,
 ```
 
-Tabelle daysel: 0=off, 1..7=Mo..So, 8=täglich. Stand hier: **off** – der
-Legionellenschutz ist nicht aktiviert, war also nicht Ursache der elektrischen
-Warmwasser-Ladung.
+Daysel table: 0=off, 1..7=Mon..Sun, 8=daily. State at the time of writing:
+**off** -- legionella protection is not activated, so it was not the cause of
+the electrical domestic hot water charging.

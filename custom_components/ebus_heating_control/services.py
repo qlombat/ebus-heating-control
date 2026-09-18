@@ -1,9 +1,9 @@
-"""Services für eBUS Heating Control: generischer Schreibzugriff auf ebusd.
+"""Services for eBUS Heating Control: generic write access to ebusd.
 
-`ebus_heating_control.write` reicht einen Wert direkt an ebusds `write`-Kommando durch –
-universell, ohne eigene Definitionen. Mehrfeld-Werte mit `;` trennen
-(z. B. `0;3;06:00;22:00;20.0`). Nach dem Schreiben wird frisch gelesen und der
-aktuelle Wert der Nachricht als Response zurückgegeben.
+`ebus_heating_control.write` passes a value straight through to ebusd's `write`
+command -- universal, without its own definitions. Separate multi-field values
+with `;` (e.g. `0;3;06:00;22:00;20.0`). A fresh read follows the write, and the
+message's current value is returned as the response.
 """
 from __future__ import annotations
 
@@ -36,15 +36,15 @@ WRITE_SCHEMA = vol.Schema(
 def _get_coordinator(hass: HomeAssistant, entry_id: str | None) -> EbusdCoordinator:
     data: dict[str, EbusdCoordinator] = hass.data.get(DOMAIN, {})
     if not data:
-        raise ServiceValidationError("eBUS Heating Control ist nicht eingerichtet.")
+        raise ServiceValidationError("eBUS Heating Control is not set up.")
     if entry_id:
         if entry_id not in data:
-            raise ServiceValidationError(f"Unbekannte entry_id: {entry_id}")
+            raise ServiceValidationError(f"Unknown entry_id: {entry_id}")
         return data[entry_id]
     if len(data) == 1:
         return next(iter(data.values()))
     raise ServiceValidationError(
-        "Mehrere eBUS-Heating-Control-Instanzen – bitte entry_id angeben."
+        "Multiple eBUS Heating Control instances -- please specify entry_id."
     )
 
 
@@ -60,8 +60,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         try:
             await coordinator.client.write(circuit, message, value)
         except EbusdError as err:
-            raise HomeAssistantError(f"ebusd write fehlgeschlagen: {err}") from err
-        # Best-effort frischer Read, damit /data den neuen Wert zeigt.
+            raise HomeAssistantError(f"ebusd write failed: {err}") from err
+        # Best-effort fresh read, so /data shows the new value.
         try:
             await coordinator.client.read(circuit, message)
         except EbusdError:
@@ -84,6 +84,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
 
 def async_unload_services(hass: HomeAssistant) -> None:
-    """Service entfernen, wenn keine Instanz mehr geladen ist."""
+    """Remove the service once no instance is loaded anymore."""
     if not hass.data.get(DOMAIN):
         hass.services.async_remove(DOMAIN, SERVICE_WRITE)

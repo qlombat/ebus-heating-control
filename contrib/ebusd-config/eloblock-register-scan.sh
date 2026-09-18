@@ -1,31 +1,31 @@
 #!/bin/sh
-# eloBlock (VE24, Adresse 38 hinter V32-Koppler) -- b509-Registerscan.
+# eloBlock (VE24, address 38 behind the V32 coupler) -- b509 register scan.
 #
-# Liest 0d<RR>00 fuer RR = START..END roh via 'ebusctl hex' und gibt je Zeile
-#   0d<RR>00 = <antwort-hex oder ERR>
-# aus. Zweck: die echten Betriebszaehler des eloBlock finden. Die aus der
-# Community-Liste uebernommenen d.80..d.83 (0d2800/2900/2200/2300) liefern auf
-# diesem VE24 konstant 0 und wurden in 38.v32.csv auskommentiert.
+# Reads 0d<RR>00 for RR = START..END raw via 'ebusctl hex' and prints one line
+#   0d<RR>00 = <response-hex or ERR>
+# per register. Purpose: find the eloBlock's actual operating counters. The
+# d.80..d.83 (0d2800/2900/2200/2300) taken from the community list return a
+# constant 0 on this VE24 and were commented out in 38.v32.csv.
 #
-# Methode -- Vorher/Nachher-Diff:
-#   sh eloblock-register-scan.sh > scanA.txt          # jetzt (Ruhezustand)
-#   ... eloBlock einen Warmwasser-/Heizlauf machen lassen ...
-#   sh eloblock-register-scan.sh > scanB.txt          # danach
+# Method -- before/after diff:
+#   sh eloblock-register-scan.sh > scanA.txt          # now (idle state)
+#   ... let the eloBlock run a DHW/heating cycle ...
+#   sh eloblock-register-scan.sh > scanB.txt          # afterwards
 #   diff scanA.txt scanB.txt
-# Register, deren Wert in B groesser ist als in A, sind die Zaehler
-# (Stunden: +1..2, Starts: +1). Beide Dateien schicken -- ich dekodiere sie.
+# Registers whose value in B is greater than in A are the counters
+# (hours: +1..2, starts: +1). Send both files -- I'll decode them.
 #
-# Optional Bereich eingrenzen (dezimal): sh eloblock-register-scan.sh 0 128
+# Optionally narrow the range (decimal): sh eloblock-register-scan.sh 0 128
 #
-# Hinweise:
-# - Dort ausfuehren, wo 'ebusctl' laeuft (ebusd-Add-on-Terminal).
-# - Nur Lesen (0d = Lese-Kommando), ungefaehrlich.
-# - Nicht existierende Register laufen in den Lese-Timeout -> ein voller Lauf
-#   (0..255) kann etliche Minuten dauern. Am besten in einer ruhigen Phase.
-# - </dev/null je Aufruf verhindert, dass ebusctl die Schleifen-Stdin frisst.
+# Notes:
+# - Run this where 'ebusctl' runs (the ebusd add-on terminal).
+# - Read only (0d = read command), harmless.
+# - Non-existing registers run into the read timeout -> a full run
+#   (0..255) can take several minutes. Best done during a quiet phase.
+# - </dev/null per call prevents ebusctl from consuming the loop's stdin.
 START=${1:-0}
 END=${2:-255}
-SUBS=${3:-00 01}   # beide bekannten Sub-Bytes: 00 (Standard) und 01 (d.100..)
+SUBS=${3:-00 01}   # both known sub-bytes: 00 (standard) and 01 (d.100..)
 r=$START
 while [ "$r" -le "$END" ]; do
   hx=$(printf '%02x' "$r")

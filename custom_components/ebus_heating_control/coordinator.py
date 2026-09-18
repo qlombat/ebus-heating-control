@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator: Definitionen einmalig, Werte zyklisch (HTTP-JSON)."""
+"""DataUpdateCoordinator: definitions once, values on a cycle (HTTP-JSON)."""
 from __future__ import annotations
 
 import asyncio
@@ -22,55 +22,56 @@ from .schedule_store import HeatingScheduleStore
 
 _LOGGER = logging.getLogger(__name__)
 
-# Ab diesem Alter wird eine Nachricht erzwungen nachgelesen. Bewusst SEHR großzügig:
-# per Top-up geholt werden nur Werte, die KEIN Master abfragt -- Konfig/Zähler,
-# die sich kaum ändern. Zu niedrig gewählt gelten dauerhaft hunderte Werte als
-# "verharzt", der Nachhol-Rückstand ist dann staendig voll und das Zeitbudget je
-# Zyklus erschoepft ("Zeitbudget ... erschoepft" im Log) -> der Aufbau bleibt zaeh.
-# Bei 30 min schrumpft der Rueckstand auf fast null; statische Werte 30 min alt zu
-# haben ist unkritisch. Live-Werte laufen ueber `fast`/nativen Verkehr und bleiben
-# ohnehin juenger, werden also nie per Top-up angefasst.
+# A message is force-refreshed once it's older than this. Deliberately VERY
+# generous: top-up only fetches values that NO master polls -- config/counters
+# that barely change. Set too low, hundreds of values would permanently count
+# as "stale", the catch-up backlog would then stay constantly full and each
+# cycle's time budget would run out ("time budget ... exhausted" in the log)
+# -> filling up would stay sluggish. At 30 min the backlog shrinks to almost
+# zero; static values being 30 min old is uncritical. Live values run over
+# `fast`/native bus traffic and stay fresher anyway, so they're never touched
+# by top-up.
 _SELF_MAINTAINED_S = 1800
-# Erzwungene Bus-Reads je Zyklus: viele, solange ein Rückstand aufzuholen ist,
-# danach nur noch die Grundlast. ebusd führt sie blockierend aus, deshalb gedeckelt.
+# Forced bus reads per cycle: many while there's a backlog to catch up on,
+# only the baseline afterwards. ebusd runs them in a blocking way, hence capped.
 _TOPUP_MAX = 30
 _TOPUP_MIN = 8
-_TOPUP_PER_BACKLOG = 5  # je so viele offene Nachrichten ein Read mehr
-# Erzwungene Reads laufen begrenzt PARALLEL: ebusd serialisiert den Bus selbst,
-# die Parallelitaet ueberlappt nur HTTP-/Arbitrierungs-Wartezeiten -> deutlich
-# schnelleres Nachladen. Klein gehalten, um ebusd/Bus nicht zu ueberfahren.
+_TOPUP_PER_BACKLOG = 5  # one more read per this many open messages
+# Forced reads run with limited PARALLELISM: ebusd serializes the bus itself,
+# the parallelism only overlaps HTTP/arbitration wait times -> noticeably
+# faster catch-up. Kept small so as not to overrun ebusd/the bus.
 _REFRESH_CONCURRENCY = 3
-# Anteil des Zyklus, den das Nachholen blockierend nutzen darf. Waehrend des
-# einmaligen Auffuellens (grosser Rueckstand) grosszuegig; steht der Rueckstand,
-# wird das Budget ohnehin kaum angefasst.
+# Fraction of the cycle that catch-up may use in a blocking way. Generous
+# during the one-off fill-up (large backlog); once the backlog is stable,
+# the budget is barely touched anyway.
 _REFRESH_BUDGET_FRAC = 0.8
-# So oft die Definitionen neu abgeglichen werden. Neu in ebusd geladene
-# Nachrichten (nach Config-Änderung) werden dann von allein aufgenommen --
-# ohne Integrations-Reload.
+# How often definitions are re-synced. Messages newly loaded into ebusd
+# (after a config change) are then picked up on their own -- without an
+# integration reload.
 _DEF_REFRESH_S = 600
-# Nachrichten, die so oft hintereinander einen Decode-Fehler liefern (Antwort da,
-# passt aber nicht zur CSV-Definition), werden aus der Top-up-Rotation genommen:
-# sie kosten sonst jeden Zyklus einen erfolglosen Read + Log-Fehler. Bewusst auf
-# das Decode-Fehler-Flag gestützt (deterministisch), NICHT auf "kein Wert" -- ein
-# Koppler-Timeout (wp1) liefert keinen Wert, ist aber KEIN Decode-Fehler und darf
-# eine echte Nachricht nicht aussortieren.
+# Messages that return a decode error this many times in a row (a response
+# arrived, but doesn't match the CSV definition) are taken out of the top-up
+# rotation: otherwise they'd cost a failed read + log error every cycle.
+# Deliberately based on the decode-error flag (deterministic), NOT on "no
+# value" -- a coupler timeout (e.g. wp1) returns no value but is NOT a decode
+# error and must not get a genuine message filtered out.
 _MAX_DECODE_FAILS = 3
-# So oft werden aussortierte ("tote") Nachrichten erneut gelesen. Dekodiert eine
-# wieder (z. B. weil die CSV-Definition korrigiert wurde), wird sie automatisch
-# wiederbelebt -- ohne Integrations-Reload.
+# How often filtered-out ("dead") messages are read again. If one decodes
+# again (e.g. because the CSV definition was fixed), it's automatically
+# revived -- without an integration reload.
 _REVIVE_S = 3600
-# Lesbare Nachrichten, die ebusd noch NIE gelesen hat (kein lastup, kein Wert),
-# werden aktiv angestossen -- mit kleiner, GARANTIERTER Quote je Zyklus (vor dem
-# Stale-Top-up). Klein, weil erzwungene Bus-Reads blockierend sind und Timeouts
-# (Koppler/nicht implementiert) sonst den Bus ausbremsen; garantiert, weil das
-# Auffuellen sonst verhungert, sobald _stale (veraltete Werte) den Zyklus fuellt.
-# Nach wenigen erfolglosen Versuchen wird aufgegeben.
+# Readable messages that ebusd has NEVER read (no lastup, no value) are
+# actively kicked off -- with a small, GUARANTEED quota per cycle (before the
+# stale top-up). Small, because forced bus reads are blocking and timeouts
+# (coupler/not implemented) would otherwise slow down the bus; guaranteed,
+# because filling up would otherwise starve as soon as `_stale` (outdated
+# values) fills the cycle. Gives up after a few unsuccessful attempts.
 _UNREAD_MAX_TRIES = 3
 _UNREAD_PER_CYCLE = 3
 
 
 class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
-    """`fields` = Deskriptoren (fix), `data` = aktuelle Werte je Feld."""
+    """`fields` = descriptors (fixed), `data` = current values per field."""
 
     def __init__(
         self,
@@ -106,14 +107,14 @@ class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
         self._dead: set[tuple[str, str]] = set()
         self._last_revive: float | None = None
         self._unread_tries: dict[tuple[str, str], int] = {}
-        # Wochen-Zeitprogramme der Kessel-Regelung, je Kreis eine Instanz --
-        # von __init__.py angelegt (vor dem Plattform-Setup) und danach
-        # zwischen climate.py (liest) und calendar.py (schreibt) geteilt.
+        # Boiler-regulation weekly schedules, one instance per circuit --
+        # created by __init__.py (before platform setup) and then shared
+        # between climate.py (reads) and calendar.py (writes).
         self.heating_schedule_stores: dict[str, HeatingScheduleStore] = {}
         self._fast = self._collect_fast(fields, fast or [])
         if self._fast:
             _LOGGER.info(
-                "Direkt vom Bus je %d s: %s",
+                "Reading directly from the bus every %d s: %s",
                 scan_interval,
                 ", ".join(f"{c}/{m}" for c, m in self._fast),
             )
@@ -121,7 +122,7 @@ class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
     def _collect_fast(
         self, fields: list[FieldDesc], patterns: list[str]
     ) -> list[tuple[str, str]]:
-        """Nachrichten, die je Zyklus erzwungen gelesen werden (Namens-Teilstrings)."""
+        """Messages force-read every cycle (name substrings)."""
         if not patterns:
             return []
         out: list[tuple[str, str]] = []
@@ -137,22 +138,22 @@ class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
 
     @property
     def bridge_id(self) -> tuple[str, str]:
-        """Identifier des Bridge-Elterngeräts (via_device-Ziel der Kreise)."""
+        """Identifier of the bridge parent device (via_device target of the circuits)."""
         return (DOMAIN, self.entry_id)
 
     def included(self, desc: FieldDesc) -> bool:
-        """False, wenn der Nachrichtenname ein Ausschluss-Muster enthält."""
+        """False if the message name contains an exclude pattern."""
         name = desc.message.lower()
         return not any(pattern in name for pattern in self._exclude)
 
     async def _refresh(self, targets: list[tuple[str, str]]) -> None:
-        """Nachrichten direkt vom Bus nachholen, begrenzt PARALLEL.
+        """Catch up on messages directly from the bus, limited PARALLEL.
 
-        ebusd liest blockierend und serialisiert den Bus selbst; die Parallelitaet
-        (Semaphore) ueberlappt nur die HTTP-/Wartezeiten und beschleunigt so das
-        Nachladen deutlich. Zeitbremse: nach dem Budget werden keine neuen Reads
-        mehr gestartet (bereits laufende beenden noch), damit ein nicht
-        antwortendes Geraet den Zyklus nicht ueberzieht.
+        ebusd reads in a blocking way and serializes the bus itself; the
+        parallelism (semaphore) only overlaps the HTTP/wait times and thus
+        noticeably speeds up catch-up. Time cap: once the budget is used up,
+        no new reads are started (already-running ones still finish), so
+        that a non-responding device doesn't overrun the cycle.
         """
         if not targets:
             return
@@ -164,23 +165,23 @@ class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
         async def _one(circuit: str, message: str) -> None:
             nonlocal exhausted
             async with sem:
-                if loop.time() > deadline:  # Budget voll -> keinen neuen Read starten
+                if loop.time() > deadline:  # budget used up -> don't start a new read
                     exhausted = True
                     return
                 try:
                     await self.client.refresh(circuit, message, self._max_age)
-                except EbusdError as err:  # einzelne Nachricht nicht lesbar -> weiter
-                    _LOGGER.debug("Direktes Lesen von %s/%s: %s", circuit, message, err)
+                except EbusdError as err:  # single message not readable -> continue
+                    _LOGGER.debug("Direct read of %s/%s: %s", circuit, message, err)
 
         await asyncio.gather(*(_one(c, m) for c, m in targets))
         if exhausted:
-            _LOGGER.debug("Zeitbudget fürs Nachholen erschöpft, Rest folgt")
+            _LOGGER.debug("Catch-up time budget exhausted, the rest will follow")
 
     def _stale(self) -> list[tuple[str, str]]:
-        """Nachrichten, die der Bus nicht von allein frisch hält, älteste zuerst.
+        """Messages the bus doesn't keep fresh on its own, oldest first.
 
-        Bezugspunkt ist ebusds eigene Uhr (jüngster Zeitstempel der Antwort),
-        damit eine Zeitabweichung zwischen HA und ebusd nichts verfälscht.
+        Uses ebusd's own clock as the reference point (the response's most
+        recent timestamp), so a time drift between HA and ebusd can't skew it.
         """
         if not self._ages:
             return []
@@ -193,23 +194,23 @@ class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
             and self.included_key(key)
             and key not in self._dead
         ]
-        stale.sort(key=lambda item: item[1])  # älteste zuerst
+        stale.sort(key=lambda item: item[1])  # oldest first
         return [key for key, _ in stale]
 
     def included_key(self, key: tuple[str, str]) -> bool:
-        """Wie `included`, aber auf (Kreis, Nachricht) statt auf ein Feld."""
+        """Like `included`, but on (circuit, message) instead of a field."""
         name = key[1].lower()
         return not any(pattern in name for pattern in self._exclude)
 
     async def _maybe_refresh_definitions(self) -> None:
-        """Neue ebusd-Nachrichten von allein aufnehmen (kein Reload nötig).
+        """Pick up new ebusd messages on their own (no reload needed).
 
-        ebusd kann nach einer Config-Änderung neue Nachrichten kennen, die es
-        beim Setup noch nicht gab. Nur ergänzen, nie entfernen; geänderte
-        Definitionen (z. B. neue Werte-Tabelle) brauchen weiter einen Reload.
+        ebusd may know new messages after a config change that didn't exist
+        yet at setup time. Only add, never remove; changed definitions
+        (e.g. a new value table) still need a reload.
         """
         loop = asyncio.get_running_loop()
-        if self._last_def_refresh is None:  # Setup hat gerade frisch geholt
+        if self._last_def_refresh is None:  # setup just fetched them
             self._last_def_refresh = loop.time()
             return
         if loop.time() - self._last_def_refresh < _DEF_REFRESH_S:
@@ -218,25 +219,25 @@ class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
         try:
             fields, device_meta = await self.client.get_definitions()
         except EbusdError as err:
-            _LOGGER.debug("Definitions-Abgleich fehlgeschlagen: %s", err)
+            _LOGGER.debug("Definitions sync failed: %s", err)
             return
         known = {d.key for d in self.fields}
         new = [d for d in fields if d.key not in known]
         if new:
             self.fields = self.fields + new
             self.device_meta = device_meta
-            _LOGGER.info("%d neue ebusd-Nachricht(en) übernommen", len(new))
+            _LOGGER.info("Picked up %d new ebusd message(s)", len(new))
 
     def _track_decode_errors(self, errs: set[tuple[str, str]]) -> None:
-        """Dauerhaft nicht dekodierbare Nachrichten aus der Rotation nehmen.
+        """Take permanently non-decodable messages out of the rotation.
 
-        Zählt aufeinanderfolgende Decode-Fehler je Nachricht; nach `_MAX_DECODE_FAILS`
-        wird sie als tot markiert und weder per Top-up noch per `fast` gelesen.
-        Verschwindet der Fehler (z. B. korrigierte CSV nach Reload), wird der Zähler
-        zurückgesetzt und die Nachricht wieder freigegeben.
+        Counts consecutive decode errors per message; after `_MAX_DECODE_FAILS`
+        it's marked dead and read neither by top-up nor by `fast`. If the error
+        disappears (e.g. a corrected CSV after reload), the counter is reset
+        and the message is released again.
         """
         for key in list(self._decode_fails):
-            if key not in errs:  # dekodiert wieder -> vergessen und wiederbeleben
+            if key not in errs:  # decodes again -> forget and revive
                 del self._decode_fails[key]
                 self._dead.discard(key)
         for key in errs:
@@ -245,16 +246,16 @@ class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
             if n >= _MAX_DECODE_FAILS and key not in self._dead:
                 self._dead.add(key)
                 _LOGGER.info(
-                    "%s/%s liefert wiederholt undekodierbare Daten -> aus der "
-                    "Lese-Rotation genommen (CSV-Definition prüfen)", *key
+                    "%s/%s keeps returning non-decodable data -> removed from "
+                    "the read rotation (check the CSV definition)", *key
                 )
 
     def _revive_probe(self) -> list[tuple[str, str]]:
-        """Tote Nachrichten in großen Abständen einmal erneut lesen.
+        """Read dead messages again once, at long intervals.
 
-        Der erzwungene Read löst einen frischen Dekodier-Versuch aus; klappt er
-        (korrigierte Definition), nimmt `_track_decode_errors` die Nachricht von
-        allein wieder auf. Sonst bleibt sie tot bis zum nächsten Versuch.
+        The forced read triggers a fresh decode attempt; if it succeeds
+        (corrected definition), `_track_decode_errors` picks the message back
+        up on its own. Otherwise it stays dead until the next attempt.
         """
         if not self._dead:
             return []
@@ -265,33 +266,33 @@ class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
         if loop.time() - self._last_revive < _REVIVE_S:
             return []
         self._last_revive = loop.time()
-        _LOGGER.debug("Selbstheilung: %d tote Nachricht(en) erneut probiert", len(self._dead))
+        _LOGGER.debug("Self-healing: retrying %d dead message(s)", len(self._dead))
         return list(self._dead)
 
     def _unread(self) -> list[tuple[str, str]]:
-        """Lesbare Nachrichten ohne jeden bisherigen Wert einmalig anstossen.
+        """Kick off readable messages that have never returned a value, once.
 
-        `_stale` deckt nur Nachrichten mit vorhandenem Zeitstempel ab. Ein
-        `r`-Register, das weder ebusd pollt noch ein anderer Master abfragt, hat
-        aber nie einen `lastup` -> es fiele durch und bliebe ewig ohne Wert
-        ("nicht verfügbar"). Solche hier ein paar Mal aktiv lesen; sobald ein
-        Wert kommt, greift danach `_stale`.
+        `_stale` only covers messages that already have a timestamp. An
+        `r`-register that neither ebusd polls nor another master queries,
+        however, never gets a `lastup` -> it would fall through and stay
+        without a value forever ("unavailable"). Actively read such messages
+        a few times; once a value arrives, `_stale` takes over from there.
 
-        `lastup <= 0` zählt dabei genauso als "nie gelesen" wie ein ganz
-        fehlender Eintrag -- ebusd liefert für frisch gescannte Nachrichten
-        einen Eintrag mit `lastup: 0`, der sonst fälschlich als bereits bekannt
-        durchgehen und die Erstlesung dauerhaft verhindern würde.
+        `lastup <= 0` counts here just like a completely missing entry as
+        "never read" -- ebusd returns an entry with `lastup: 0` for freshly
+        scanned messages, which would otherwise be wrongly treated as already
+        known and would permanently prevent the initial read.
         """
-        if not self._ages:  # ohne lastup ist die Frische-Logik ohnehin aus
+        if not self._ages:  # without lastup, the freshness logic is off anyway
             return []
         valued = {(c, m) for (c, m, _f), v in (self.data or {}).items() if v is not None}
         out: list[tuple[str, str]] = []
         seen: set[tuple[str, str]] = set()
         for desc in self.fields:
             key = (desc.circuit, desc.message)
-            # Reine Schreibnachrichten nie erzwungen lesen; ebusd kann sie nicht
-            # per aktivem Read beantworten (bei passiv mitgehörten Kommandos wie
-            # SetMode führt der Versuch sogar zu "ERR: end of input reached").
+            # Never force-read pure write messages; ebusd can't answer them
+            # with an active read (for passively overheard commands like
+            # SetMode, the attempt even causes "ERR: end of input reached").
             if key in seen or desc.writable or desc.passive:
                 continue
             if (self._ages.get(key, 0) <= 0 and key not in valued
@@ -304,27 +305,28 @@ class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
 
     async def _async_update_data(self) -> dict[tuple[str, str, str], Any]:
         await self._maybe_refresh_definitions()
-        # Erzwungen lesen: erst die vom Nutzer benannten, dann die verharzten
-        # reihum -- begrenzt, damit der Bus nicht geflutet wird.
+        # Force-read: first the user-named ones, then the stale ones in
+        # rotation -- capped, so the bus doesn't get flooded.
         targets = [key for key in self._fast if key not in self._dead]
         targets += self._revive_probe()
-        # Erstwerte VOR dem Stale-Top-up: kleine garantierte Quote, damit das
-        # Auffuellen nie verhungert, wenn _stale den Zyklus fuellt. Klein gehalten,
-        # damit die blockierenden Erst-Reads (v. a. Timeouts) den Bus nicht bremsen.
+        # Initial values BEFORE the stale top-up: a small guaranteed quota,
+        # so filling up never starves when `_stale` fills the cycle. Kept
+        # small so the blocking initial reads (mainly timeouts) don't slow
+        # down the bus.
         unread = self._unread()
         if unread:
             take = min(_UNREAD_PER_CYCLE, len(unread))
             for key in unread[:take]:
                 self._unread_tries[key] = self._unread_tries.get(key, 0) + 1
             targets += unread[:take]
-            _LOGGER.debug("%d ungelesene Nachricht(en), stosse %d an", len(unread), take)
+            _LOGGER.debug("%d unread message(s), kicking off %d", len(unread), take)
         stale = self._stale()
         if stale:
             take = min(_TOPUP_MAX, max(_TOPUP_MIN, len(stale) // _TOPUP_PER_BACKLOG))
             self._cursor %= len(stale)
             targets += stale[self._cursor : self._cursor + take]
             self._cursor += take
-            _LOGGER.debug("%d Nachrichten verharzt, hole %d nach", len(stale), take)
+            _LOGGER.debug("%d messages stale, catching up %d", len(stale), take)
         if targets:
             await self._refresh(targets)
 
@@ -337,12 +339,12 @@ class EbusdCoordinator(DataUpdateCoordinator[dict[tuple[str, str, str], Any]]):
         self._track_decode_errors(parse_decode_errors(data))
         values = parse_values(data)
         if values and not self._ages and not self._warned_ages:
-            # Ohne `lastup` liesse sich nicht erkennen, was der Bus selbst pflegt
-            # -- es wuerde dann still gar nichts mehr nachgeholt.
+            # Without `lastup`, there'd be no way to tell what the bus
+            # maintains on its own -- nothing would ever get caught up silently.
             self._warned_ages = True
             _LOGGER.warning(
-                "ebusd liefert kein 'lastup' je Nachricht; Werte werden nicht "
-                "nachgeholt. Unterstützt diese ebusd-Version den Parameter 'full'?"
+                "ebusd doesn't provide 'lastup' per message; values won't be "
+                "caught up. Does this ebusd version support the 'full' parameter?"
             )
-        _LOGGER.debug("ebusd: %d Felder mit Wert", len(values))
+        _LOGGER.debug("ebusd: %d fields with a value", len(values))
         return values

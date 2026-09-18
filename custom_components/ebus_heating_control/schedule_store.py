@@ -1,13 +1,13 @@
-"""Persistente Speicherung des Wochen-Zeitprogramms je Kessel-Kreis.
+"""Persistent storage for the weekly schedule, per boiler circuit.
 
-Trennt die Home-Assistant-spezifische Speicher-API
-(`homeassistant.helpers.storage.Store`) von der reinen Auswertungslogik in
-`schedule.py`, damit letztere ohne HA-Abhängigkeit testbar bleibt.
+Separates the Home Assistant-specific storage API
+(`homeassistant.helpers.storage.Store`) from the pure evaluation logic in
+`schedule.py`, so the latter stays testable without an HA dependency.
 
-Eine Instanz wird pro Kessel-Kreis EINMAL angelegt (siehe `__init__.py`) und
-zwischen `climate.py` (liest) und `calendar.py` (schreibt/liest) über den
-Coordinator geteilt -- dieselbe Instanz, damit Änderungen sofort für beide
-sichtbar sind (kein Neuladen von der Platte nötig, kein Stale-Cache-Risiko).
+One instance is created ONCE per boiler circuit (see `__init__.py`) and shared
+between `climate.py` (reads) and `calendar.py` (writes/reads) via the
+coordinator -- the same instance, so changes are immediately visible to both
+(no reload from disk needed, no stale-cache risk).
 """
 from __future__ import annotations
 
@@ -34,23 +34,23 @@ def _format_hm(value: time) -> str:
 
 
 class HeatingScheduleStore:
-    """Wochen-Zeitprogramm für einen Kessel-Kreis, persistiert unter `.storage/`."""
+    """Weekly schedule for one boiler circuit, persisted under `.storage/`."""
 
     def __init__(self, hass: HomeAssistant, entry_id: str, circuit: str) -> None:
         self._store: Store = Store(
             hass, _STORAGE_VERSION, f"{DOMAIN}_{entry_id}_{circuit}_heating_schedule"
         )
         self._events: list[ScheduleEvent] | None = None
-        # climate.py und calendar.py teilen sich diese Instanz und könnten beim
-        # Setup gleichzeitig zum ersten Mal laden -- Lock verhindert einen
-        # doppelten (harmlosen, aber unnötigen) Platten-Zugriff.
+        # climate.py and calendar.py share this instance and could both load
+        # it for the first time simultaneously during setup -- the lock
+        # prevents a duplicate (harmless but unnecessary) disk access.
         self._load_lock = asyncio.Lock()
 
     async def async_events(self) -> list[ScheduleEvent]:
-        """Aktuelle Ereignisse, aus dem Cache oder frisch von der Platte geladen."""
+        """Current events, from cache or freshly loaded from disk."""
         if self._events is None:
             async with self._load_lock:
-                if self._events is None:  # evtl. während des Wartens geladen
+                if self._events is None:  # may have been loaded while waiting
                     raw = await self._store.async_load() or []
                     self._events = [
                         ScheduleEvent(
@@ -66,11 +66,11 @@ class HeatingScheduleStore:
 
     @property
     def cached_events(self) -> list[ScheduleEvent]:
-        """Zuletzt geladene Ereignisse, synchron lesbar (leer, falls noch nie geladen).
+        """Last-loaded events, readable synchronously (empty if never loaded yet).
 
-        Für `CalendarEntity.event`, das (anders als `async_get_events`) synchron
-        sein muss -- Aufrufer stellen per `async_events()` in `async_added_to_hass`
-        sicher, dass hier schon geladen wurde.
+        For `CalendarEntity.event`, which (unlike `async_get_events`) must be
+        synchronous -- callers ensure via `async_events()` in
+        `async_added_to_hass` that this has already been loaded.
         """
         return self._events if self._events is not None else []
 
@@ -112,7 +112,7 @@ class HeatingScheduleStore:
                 )
                 await self._async_save()
                 return
-        raise KeyError(f"Unbekannte Zeitprogramm-ID: {event_id}")
+        raise KeyError(f"Unknown schedule event ID: {event_id}")
 
     async def async_remove(self, event_id: str) -> None:
         events = await self.async_events()

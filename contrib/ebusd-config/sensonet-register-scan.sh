@@ -1,28 +1,29 @@
 #!/bin/sh
-# Vaillant sensoNET VR 921 (NETX3, Adresse f6) -- b509-Registerscan.
+# Vaillant sensoNET VR 921 (NETX3, address f6) -- b509 register scan.
 #
-# Zweck: empirisch pruefen, ob das sensoNET AN ADRESSE f6 ueberhaupt lesbare
-# Register hat, bevor man blind Definitionen anderer Geraete uebernimmt. Erste
-# Direktmessungen (siehe f6.netx3.csv) lieferten auf b509/b511/b504 nur leere
-# Quittungen -- das sensoNET ist ein Cloud-Gateway, kein datentragendes Geraet.
-# Dieses Skript falsifiziert oder bestaetigt das ueber den vollen b509-Bereich.
+# Purpose: empirically check whether the sensoNET AT ADDRESS f6 has any
+# readable registers at all, before blindly reusing other devices'
+# definitions. First direct measurements (see f6.netx3.csv) only returned
+# empty acknowledgments on b509/b511/b504 -- the sensoNET is a cloud gateway,
+# not a data-carrying device. This script disproves or confirms that across
+# the full b509 range.
 #
-# Ausgabe je Zeile:  0d<RR><ss> = <antwort-hex oder ERR>
-#   0x00 mit Laengen-Byte 00  -> Register existiert, aber LEER (kein Wert)
-#   Laenge > 0 mit echten Bytes -> KANDIDAT: mir schicken, ich dekodiere
-#   ERR / timeout               -> Register nicht vorhanden
+# Output per line:  0d<RR><ss> = <response-hex or ERR>
+#   0x00 with length byte 00  -> register exists, but EMPTY (no value)
+#   length > 0 with real bytes -> CANDIDATE: send it to me, I'll decode it
+#   ERR / timeout               -> register doesn't exist
 #
-# Aufruf (im ebusd-Add-on-Terminal, wo 'ebusctl' laeuft):
+# Usage (in the ebusd add-on terminal, where 'ebusctl' runs):
 #   sh sensonet-register-scan.sh > f6scan.txt
-#   ... Datei schicken ...
-# Bereich eingrenzen (dezimal):  sh sensonet-register-scan.sh 0 128
+#   ... send the file ...
+# Narrow the range (decimal):  sh sensonet-register-scan.sh 0 128
 #
-# Hinweise:
-# - Nur Lesen (0d = Lese-Kommando), ungefaehrlich.
-# - f6 ist ein sehr aktiver Master; nicht existierende Register laufen in den
-#   Lese-Timeout -> ein voller Lauf (0..255 x 2 Subs) dauert etliche Minuten.
-#   In einer ruhigen Phase laufen lassen.
-# - </dev/null je Aufruf verhindert, dass ebusctl die Schleifen-Stdin frisst.
+# Notes:
+# - Read only (0d = read command), harmless.
+# - f6 is a very active master; non-existing registers run into the read
+#   timeout -> a full run (0..255 x 2 subs) takes several minutes.
+#   Run it during a quiet phase.
+# - </dev/null per call prevents ebusctl from consuming the loop's stdin.
 ADDR=f6
 START=${1:-0}
 END=${2:-255}

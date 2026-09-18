@@ -1,4 +1,4 @@
-"""Gemeinsame Basisklasse für alle ebusd-Direct-Entities."""
+"""Shared base class for all ebusd-direct entities."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -15,9 +15,9 @@ from .const import DOMAIN
 from .coordinator import EbusdCoordinator
 from .model import FieldDesc
 
-# Produktnamen für bekannte Vaillant-Scan-IDs. Bewusst OHNE die WP-Modelle
-# (HMU00/V32): dort ist das gescannte Modell der Koppler bzw. wenig sprechend,
-# der Nutzer-Kreis (wp0/wp1) ist aussagekräftiger.
+# Product names for known Vaillant scan IDs. Deliberately WITHOUT the heat
+# pump models (HMU00/V32): there the scanned model is the coupler, or not
+# very descriptive, and the user-facing circuit (wp0/wp1) is more meaningful.
 _PRODUCT_NAMES = {
     "CTLV3": "sensoCOMFORT",
     "VR_71": "VR 71",
@@ -32,12 +32,12 @@ def _device_name(circuit: str, model: str | None) -> str:
     return circuit.replace("_", " ").upper()  # "vr_71" -> "VR 71", "wp0" -> "WP0"
 
 
-# Icon-Heuristik: EINHEIT zuerst. Temperaturen (°C/K) -> Thermometer-Variante je
-# Kontext; sonst Gerätesymbol nach Namens-Stichwort, zuletzt Einheit.
+# Icon heuristic: UNIT first. Temperatures (°C/K) -> a thermometer variant
+# depending on context; otherwise a device icon by name keyword, unit last.
 _TEMP_UNITS = {"°C", "K"}
 
 _NONTEMP_KEYWORD: list[tuple[str, str]] = [
-    ("name", "mdi:rename"),  # Zonen-Namen/Kurzbezeichnungen (Name1/2, Shortname)
+    ("name", "mdi:rename"),  # zone names/short labels (Name1/2, Shortname)
     ("pump", "mdi:pump"),
     ("valve", "mdi:pipe-valve"),
     ("compressor", "mdi:heat-pump"),
@@ -92,7 +92,7 @@ def _icon_for(desc: FieldDesc) -> str | None:
 
 
 def build_device_info(coordinator: EbusdCoordinator, circuit: str) -> DeviceInfo:
-    """Gerät je eBUS-Kreis – Klarname (kein „ebusd"), hängt als Kind an der Bridge."""
+    """One device per eBUS circuit -- readable name (not "ebusd"), attaches as a child to the bridge."""
     meta = coordinator.device_meta.get(circuit, {})
     info = DeviceInfo(
         identifiers={(DOMAIN, circuit)},
@@ -102,8 +102,8 @@ def build_device_info(coordinator: EbusdCoordinator, circuit: str) -> DeviceInfo
         sw_version=meta.get("sw"),
         hw_version=meta.get("hw"),
     )
-    # via_device (Identifier-Tupel) ist ab HA 2027.8.0 entfernt -- stattdessen
-    # die tatsächliche Registry-ID des Bridge-Elterngeräts auflösen.
+    # via_device (identifier tuple) is removed as of HA 2027.8.0 -- resolve
+    # the bridge parent device's actual registry ID instead.
     bridge_device = dr.async_get(coordinator.hass).async_get_device(
         identifiers={coordinator.bridge_id}
     )
@@ -119,17 +119,17 @@ def add_fields_dynamically(
     build: Callable[[FieldDesc], Any],
     always: Callable[[FieldDesc], bool] | None = None,
 ) -> Callable[[], None]:
-    """Entities anlegen, sobald ein Feld erstmals einen Wert hat.
+    """Create entities as soon as a field has a value for the first time.
 
-    ebusds Cache ist nach einem Neustart leer und füllt sich erst nach und nach.
-    Würde man nur beim Setup prüfen, fehlte dauerhaft alles, was zu diesem
-    Zeitpunkt noch keinen Wert hatte -- und der Nutzer müsste neu laden. Felder
-    ohne Wert legen umgekehrt keine Karteileichen an (nicht bestückte Hardware).
+    ebusd's cache is empty after a restart and fills up gradually. Checking
+    only at setup would permanently miss anything that had no value yet at
+    that point -- and the user would have to reload. Conversely, fields
+    without a value don't create orphan entities (unpopulated hardware).
 
-    `always`: Felder, die AUCH ohne Wert angelegt werden (z. B. Fehlerspeicher --
-    leer = "kein Fehler", soll trotzdem als Status sichtbar sein).
+    `always`: fields that are created even without a value (e.g. the error
+    log -- empty = "no error", should still be visible as a status).
 
-    Rückgabe: Abmelde-Funktion für den Coordinator-Listener.
+    Returns: an unsubscribe function for the coordinator listener.
     """
     known: set[tuple[str, str, str]] = set()
 
@@ -151,7 +151,7 @@ def add_fields_dynamically(
 
 
 class EbusdBaseEntity(CoordinatorEntity[EbusdCoordinator]):
-    """Bindet eine Entity an einen Feld-Deskriptor + Coordinator."""
+    """Binds an entity to a field descriptor + coordinator."""
 
     _attr_has_entity_name = True
 
@@ -161,9 +161,9 @@ class EbusdBaseEntity(CoordinatorEntity[EbusdCoordinator]):
         self._attr_name = desc.label
         self._attr_icon = _icon_for(desc)
         self._attr_device_info = build_device_info(coordinator, desc.circuit)
-        # Passiv mitgehörte Kommando-Felder (z. B. SetMode) sind Diagnose und
-        # standardmäßig aus -- sonst fluten sie die Geräte. Der Nutzer aktiviert
-        # gezielt, was er braucht (etwa releasebackup).
+        # Passively overheard command fields (e.g. SetMode) are diagnostic and
+        # disabled by default -- otherwise they'd flood the devices. The user
+        # opts in to what they specifically need (e.g. releasebackup).
         if desc.passive and not desc.writable:
             self._attr_entity_category = EntityCategory.DIAGNOSTIC
             self._attr_entity_registry_enabled_default = False

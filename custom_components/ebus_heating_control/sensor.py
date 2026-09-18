@@ -1,4 +1,4 @@
-"""Sensor-Plattform: lesbare Felder (nicht schreibbar), je Feld eine Entity."""
+"""Sensor platform: readable (non-writable) fields, one entity per field."""
 from __future__ import annotations
 
 from homeassistant.components.sensor import (
@@ -18,26 +18,26 @@ from .coordinator import EbusdCoordinator
 from .entity import EbusdBaseEntity, add_fields_dynamically
 from .model import FieldDesc, is_binary, is_error_status, writable_control
 
-# Bridge-Diagnose aus dem globalen ebusd-Abschnitt.
-# (key, Name, Einheit, Icon, state_class, standardmäßig aktiviert)
+# Bridge diagnostics from ebusd's global section.
+# (key, name, unit, icon, state_class, enabled by default)
 _M = SensorStateClass.MEASUREMENT
 _GLOBAL_SENSORS: list[tuple] = [
-    ("symbolrate", "Symbolrate", "Sym/s", "mdi:speedometer", _M, True),
-    ("maxsymbolrate", "Max. Symbolrate", "Sym/s", "mdi:speedometer-medium", _M, True),
+    ("symbolrate", "Symbol rate", "Sym/s", "mdi:speedometer", _M, True),
+    ("maxsymbolrate", "Max. symbol rate", "Sym/s", "mdi:speedometer-medium", _M, True),
     ("reconnects", "Reconnects", None, "mdi:connection", SensorStateClass.TOTAL_INCREASING, True),
-    ("masters", "Master am Bus", None, "mdi:sitemap-outline", _M, True),
-    ("qq", "ebusd-Adresse (QQ)", None, "mdi:identifier", None, True),
-    ("messages", "Bekannte Nachrichten", None, "mdi:message-text-outline", _M, True),
-    # Enhanced-Timing – Diagnose, standardmäßig deaktiviert
-    ("minarbitrationmicros", "Arbitrierung min", "µs", "mdi:timer-outline", _M, False),
-    ("maxarbitrationmicros", "Arbitrierung max", "µs", "mdi:timer-outline", _M, False),
-    ("minsymbollatency", "Symbol-Latenz min", None, "mdi:timer-sand", _M, False),
-    ("maxsymbollatency", "Symbol-Latenz max", None, "mdi:timer-sand", _M, False),
+    ("masters", "Masters on bus", None, "mdi:sitemap-outline", _M, True),
+    ("qq", "ebusd address (QQ)", None, "mdi:identifier", None, True),
+    ("messages", "Known messages", None, "mdi:message-text-outline", _M, True),
+    # Enhanced timing diagnostics, disabled by default
+    ("minarbitrationmicros", "Arbitration min", "µs", "mdi:timer-outline", _M, False),
+    ("maxarbitrationmicros", "Arbitration max", "µs", "mdi:timer-outline", _M, False),
+    ("minsymbollatency", "Symbol latency min", None, "mdi:timer-sand", _M, False),
+    ("maxsymbollatency", "Symbol latency max", None, "mdi:timer-sand", _M, False),
 ]
 
 
 def _precision(desc: FieldDesc) -> int | None:
-    """Nachkommastellen aus der Schrittweite des Datentyps (UCH -> 0, D2C -> 1)."""
+    """Decimal places from the data type's step size (UCH -> 0, D2C -> 1)."""
     if not desc.numeric or not desc.step:
         return None
     if desc.step >= 1:
@@ -47,7 +47,7 @@ def _precision(desc: FieldDesc) -> int | None:
 
 
 def _classes(desc: FieldDesc):
-    """device_class + state_class aus der Einheit (fehlerfrei kombiniert)."""
+    """device_class + state_class from the unit (combined without conflicts)."""
     unit = desc.unit
     if unit == "°C":
         return SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT
@@ -78,7 +78,7 @@ async def async_setup_entry(
                 and coordinator.included(d)
             ),
             lambda d: EbusdSensor(coordinator, d),
-            always=is_error_status,  # Fehlerspeicher auch ohne Fehler anzeigen
+            always=is_error_status,  # show the error log even without a fault
         )
     )
     async_add_entities(
@@ -95,8 +95,8 @@ class EbusdSensor(EbusdBaseEntity, SensorEntity):
         self._attr_unique_id = f"{DOMAIN}_{desc.uid}"
         self._is_error = is_error_status(desc)
         if self._is_error:
-            # Fehlerspeicher: Status, kein Messwert -> kein device_/state_class.
-            # Leerer Platz zeigt "ok"; Entitaet bleibt sichtbar (siehe available).
+            # Error log: a status, not a measurement -> no device_/state_class.
+            # An empty slot shows "ok"; the entity stays visible (see available).
             self._attr_icon = "mdi:alert-circle-check-outline"
             self._attr_entity_category = EntityCategory.DIAGNOSTIC
             return
@@ -109,8 +109,8 @@ class EbusdSensor(EbusdBaseEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        # Fehlerspeicher immer sichtbar, solange ebusd erreichbar ist -- "leer"
-        # heisst "kein Fehler", nicht "nicht verfuegbar".
+        # Error log always visible while ebusd is reachable -- "empty"
+        # means "no error", not "unavailable".
         if self._is_error:
             return self.coordinator.last_update_success
         return super().available
@@ -127,11 +127,11 @@ class EbusdSensor(EbusdBaseEntity, SensorEntity):
                 return float(value)
             except (TypeError, ValueError):
                 return None
-        return value  # Enum-/Text-Wert (z. B. "auto", "off")
+        return value  # enum/text value (e.g. "auto", "off")
 
 
 class EbusdGlobalSensor(CoordinatorEntity[EbusdCoordinator], SensorEntity):
-    """Bus-/Adapter-Diagnose (globaler ebusd-Abschnitt), hängt an der Bridge."""
+    """Bus/adapter diagnostics (global ebusd section), attached to the bridge."""
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -162,7 +162,7 @@ class EbusdGlobalSensor(CoordinatorEntity[EbusdCoordinator], SensorEntity):
 
 
 class EbusdHostSensor(CoordinatorEntity[EbusdCoordinator], SensorEntity):
-    """Host/IP der ebusd-Instanz als Text-Sensor an der Bridge."""
+    """Host/IP of the ebusd instance as a text sensor on the bridge."""
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC

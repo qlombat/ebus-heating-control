@@ -1,14 +1,14 @@
-"""Calendar-Plattform: Vaillant-Wochen-Zeitprogramme.
+"""Calendar platform: Vaillant weekly schedules.
 
-Lesen: pro Slot eine Nachricht `<Prefix>Timer_<Wochentag><Slot>` mit `htm` (von),
-`htm_1` (bis), optional `slottemp`. Je (Kreis, Prefix) ein Kalender.
+Read: one message per slot, `<prefix>Timer_<weekday><slot>` with `htm` (from),
+`htm_1` (to), optionally `slottemp`. One calendar per (circuit, prefix).
 
-Schreiben (nur wenn ebusd eine schreibbare Tages-Nachricht `<Prefix>Timer_<Tag>`
-anbietet – sonst read-only): ebusds offizielle Timer-Konvention ist ein Write pro
-Tag mit `slotIndex;slotCount;von;bis[;temp]`. Wir reichen das über den TCP-`write`
-durch. Bearbeiten gilt immer für das **ganze** Wochen-Fenster (das Gerät kennt
-keine Einzeltag-Ausnahme). `slotCount`-Semantik ist best-effort und wird auf einem
-System mit schreibbaren Timern final verifiziert.
+Write (only when ebusd offers a writable day message `<prefix>Timer_<day>` --
+otherwise read-only): ebusd's official timer convention is one write per day
+with `slotIndex;slotCount;from;to[;temp]`. We pass that through via the TCP
+`write`. Editing always applies to the **entire** weekly window (the device
+has no per-day exception). `slotCount` semantics are best-effort and will be
+finally verified on a system with writable timers.
 """
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ async def async_setup_entry(
     coordinator: EbusdCoordinator = hass.data[DOMAIN][entry.entry_id]
     writable_msgs = {d.message for d in coordinator.fields if d.writable}
 
-    # (circuit, prefix) -> Liste (weekday, slot, read_message)
+    # (circuit, prefix) -> list of (weekday, slot, read_message)
     schedules: dict[tuple[str, str], list[tuple[int, int, str]]] = {}
     has_temp: dict[tuple[str, str], bool] = {}
     seen: set[tuple[str, str]] = set()
@@ -75,7 +75,7 @@ async def async_setup_entry(
         if not m:
             continue
         pkey = (d.circuit, m.group("prefix"))
-        if d.field == "slottemp":  # dieses Wochenprogramm hat eine Soll-Temperatur
+        if d.field == "slottemp":  # this weekly schedule has a target temperature
             has_temp[pkey] = True
         if (d.circuit, d.message) in seen:
             continue
@@ -86,7 +86,7 @@ async def async_setup_entry(
 
     entities: list[Any] = []
     for (circuit, prefix), slots in schedules.items():
-        # schreibbar, wenn die Tages-Write-Nachricht für einen der Tage existiert
+        # writable if the day write message exists for one of the days
         writable = any(
             f"{prefix}Timer_{_WEEKDAY_NAMES[wd]}" in writable_msgs
             for wd, _, _ in slots
@@ -97,8 +97,8 @@ async def async_setup_entry(
                 writable=writable, has_temp=has_temp.get((circuit, prefix), False),
             )
         )
-    # Wochen-Zeitprogramm der HA-seitigen Kessel-Regelung (siehe climate.py /
-    # schedule.py) -- ein Kalender je Kreis mit konfiguriertem Speicher.
+    # Weekly schedule of the HA-side boiler regulation (see climate.py /
+    # schedule.py) -- one calendar per circuit with a configured store.
     for circuit, store in coordinator.heating_schedule_stores.items():
         entities.append(EbusdHeatingScheduleCalendar(coordinator, circuit, store))
     async_add_entities(entities)
@@ -120,13 +120,13 @@ class EbusdCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
         self._circuit = circuit
         self._prefix = prefix
         self._has_temp = has_temp
-        # weekday -> sortierte Liste (slot, read_message)
+        # weekday -> sorted list of (slot, read_message)
         self._by_day: dict[int, list[tuple[int, str]]] = {}
         for weekday, slot, msg in slots:
             self._by_day.setdefault(weekday, []).append((slot, msg))
         for day_slots in self._by_day.values():
             day_slots.sort()
-        self._attr_name = f"{prefix} Zeitprogramm"
+        self._attr_name = f"{prefix} schedule"
         self._attr_unique_id = f"{DOMAIN}_{circuit}_{prefix}_timer".lower()
         if writable:
             self._attr_supported_features = (
@@ -136,7 +136,7 @@ class EbusdCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
             )
         self._attr_device_info = build_device_info(coordinator, circuit)
 
-    # ---- Lesen -------------------------------------------------------------
+    # ---- Read ----------------------------------------------------------------
     def _slot_value(self, read_msg: str) -> tuple[time | None, time | None, object]:
         get = self.coordinator.data.get
         frm = _parse_hm(get((self._circuit, read_msg, "htm")))
@@ -153,15 +153,15 @@ class EbusdCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
         for slot, msg in self._by_day.get(day.weekday(), []):
             frm, to, temp = self._slot_value(msg)
             if frm is None or to is None or frm == to:
-                continue  # leerer/ungültiger Slot
+                continue  # empty/invalid slot
             start = datetime.combine(day, frm, tzinfo=tz)
             end = datetime.combine(day, to, tzinfo=tz)
             if end <= start:
-                end += timedelta(days=1)  # über Mitternacht
+                end += timedelta(days=1)  # crosses midnight
             try:
                 summary = f"{float(temp):g} °C"
             except (TypeError, ValueError):
-                summary = "ein"
+                summary = "on"
             events.append(
                 CalendarEvent(
                     start=start, end=end, summary=summary,
@@ -192,7 +192,7 @@ class EbusdCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
                 return ev
         return None
 
-    # ---- Schreiben ---------------------------------------------------------
+    # ---- Write -----------------------------------------------------------
     def _active_slots(self, weekday: int) -> int:
         count = 0
         for _slot, msg in self._by_day.get(weekday, []):
@@ -218,8 +218,8 @@ class EbusdCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
         try:
             await self.coordinator.client.write(self._circuit, msg, value)
         except EbusdError as err:
-            raise HomeAssistantError(f"Timer-Write fehlgeschlagen: {err}") from err
-        # betroffene Lese-Slots frisch lesen, damit der Kalender aktuell ist
+            raise HomeAssistantError(f"Timer write failed: {err}") from err
+        # freshly read the affected read slots, so the calendar is up to date
         for _slot, read_msg in self._by_day.get(weekday, []):
             try:
                 await self.coordinator.client.read(self._circuit, read_msg)
@@ -236,15 +236,15 @@ class EbusdCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
             parts = uid.split("|")
             return int(parts[2]), int(parts[3])
         except (IndexError, ValueError) as err:
-            raise HomeAssistantError(f"Ungültige Termin-ID: {uid}") from err
+            raise HomeAssistantError(f"Invalid event ID: {uid}") from err
 
     async def async_create_event(self, **kwargs: Any) -> None:
         start = kwargs.get("dtstart")
         end = kwargs.get("dtend")
         if not isinstance(start, datetime) or not isinstance(end, datetime):
-            raise HomeAssistantError("Zeitprogramm-Fenster brauchen eine Uhrzeit.")
+            raise HomeAssistantError("Schedule windows need a time of day.")
         weekday = dt_util.as_local(start).weekday()
-        # ersten leeren Slot des Tages suchen
+        # find the first empty slot of the day
         free = None
         for slot, msg in self._by_day.get(weekday, []):
             frm, to, _ = self._slot_value(msg)
@@ -252,7 +252,7 @@ class EbusdCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
                 free = slot
                 break
         if free is None:
-            raise HomeAssistantError("Für diesen Wochentag sind alle Slots belegt.")
+            raise HomeAssistantError("All slots for this weekday are taken.")
         await self._write_slot(
             weekday, free, self._hm(start), self._hm(end),
             _parse_temp(kwargs.get("summary")), self._active_slots(weekday) + 1,
@@ -269,7 +269,7 @@ class EbusdCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
         start = event.get("dtstart")
         end = event.get("dtend")
         if not isinstance(start, datetime) or not isinstance(end, datetime):
-            raise HomeAssistantError("Zeitprogramm-Fenster brauchen eine Uhrzeit.")
+            raise HomeAssistantError("Schedule windows need a time of day.")
         await self._write_slot(
             weekday, slot, self._hm(start), self._hm(end),
             _parse_temp(event.get("summary")), self._active_slots(weekday),
@@ -282,7 +282,7 @@ class EbusdCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
         recurrence_range: str | None = None,
     ) -> None:
         weekday, slot = self._decode_uid(uid)
-        # Slot leeren: Fenster auf 00:00-00:00, Slotzahl verringern
+        # Clear the slot: window to 00:00-00:00, decrement slot count
         await self._write_slot(
             weekday, slot, "00:00", "00:00", 0,
             max(self._active_slots(weekday) - 1, 0),
@@ -290,14 +290,13 @@ class EbusdCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
 
 
 class EbusdHeatingScheduleCalendar(CoordinatorEntity[EbusdCoordinator], CalendarEntity):
-    """Wochen-Zeitprogramm für die HA-seitige Kessel-Regelung (climate.py).
+    """Weekly schedule for the HA-side boiler regulation (climate.py).
 
-    Rein HA-seitig gespeichert (siehe `schedule_store.py`) -- im Gegensatz zu
-    `EbusdCalendar` oben keine eBUS-Nachrichten, daher immer voll bearbeitbar
-    (kein fester Slot-Vorrat je Wochentag). Jedes Ereignis hat eine stabile
-    eigene ID, Titel = Soll-Temperatur (z. B. "21 °C"), gültig für den
-    Wochentag, an dem es beginnt (über Mitternacht laufende Fenster siehe
-    `schedule.active_setpoint`).
+    Stored purely on the HA side (see `schedule_store.py`) -- unlike
+    `EbusdCalendar` above, no eBUS messages, so always fully editable (no
+    fixed slot budget per weekday). Every event has a stable ID of its own,
+    title = target temperature (e.g. "21 °C"), valid for the weekday it
+    starts on (windows crossing midnight, see `schedule.active_setpoint`).
     """
 
     _attr_has_entity_name = True
@@ -319,8 +318,8 @@ class EbusdHeatingScheduleCalendar(CoordinatorEntity[EbusdCoordinator], Calendar
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        # Einmalig laden, damit die synchrone `event`-Property danach den
-        # Cache nutzen kann (siehe `HeatingScheduleStore.cached_events`).
+        # Load once, so the synchronous `event` property can use the
+        # cache afterwards (see `HeatingScheduleStore.cached_events`).
         await self._store.async_events()
 
     def _events_for_day(self, day: date) -> list[CalendarEvent]:
@@ -328,11 +327,11 @@ class EbusdHeatingScheduleCalendar(CoordinatorEntity[EbusdCoordinator], Calendar
         out: list[CalendarEvent] = []
         for ev in self._store.cached_events:
             if ev.weekday != day.weekday() or ev.start == ev.end:
-                continue  # anderer Wochentag oder leerer/ungültiger Slot
+                continue  # different weekday, or empty/invalid slot
             start_dt = datetime.combine(day, ev.start, tzinfo=tz)
             end_dt = datetime.combine(day, ev.end, tzinfo=tz)
             if end_dt <= start_dt:
-                end_dt += timedelta(days=1)  # über Mitternacht
+                end_dt += timedelta(days=1)  # crosses midnight
             out.append(
                 CalendarEvent(
                     start=start_dt, end=end_dt,
@@ -368,11 +367,11 @@ class EbusdHeatingScheduleCalendar(CoordinatorEntity[EbusdCoordinator], Calendar
         start = kwargs.get("dtstart")
         end = kwargs.get("dtend")
         if not isinstance(start, datetime) or not isinstance(end, datetime):
-            raise HomeAssistantError("Zeitprogramm-Fenster brauchen eine Uhrzeit.")
+            raise HomeAssistantError("Schedule windows need a time of day.")
         temp = _parse_temp(kwargs.get("summary"))
         if temp is None:
             raise HomeAssistantError(
-                'Titel muss die Soll-Temperatur enthalten (z. B. "21 °C").'
+                'Title must contain the target temperature (e.g. "21 °C").'
             )
         weekday = dt_util.as_local(start).weekday()
         await self._store.async_add(
@@ -390,11 +389,11 @@ class EbusdHeatingScheduleCalendar(CoordinatorEntity[EbusdCoordinator], Calendar
         start = event.get("dtstart")
         end = event.get("dtend")
         if not isinstance(start, datetime) or not isinstance(end, datetime):
-            raise HomeAssistantError("Zeitprogramm-Fenster brauchen eine Uhrzeit.")
+            raise HomeAssistantError("Schedule windows need a time of day.")
         temp = _parse_temp(event.get("summary"))
         if temp is None:
             raise HomeAssistantError(
-                'Titel muss die Soll-Temperatur enthalten (z. B. "21 °C").'
+                'Title must contain the target temperature (e.g. "21 °C").'
             )
         weekday = dt_util.as_local(start).weekday()
         try:

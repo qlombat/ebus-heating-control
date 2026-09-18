@@ -1,4 +1,4 @@
-"""Number-Plattform: schreibbare numerische Felder (Sollwerte)."""
+"""Number platform: writable numeric fields (setpoints)."""
 from __future__ import annotations
 
 from homeassistant.components.number import NumberEntity, NumberMode
@@ -55,8 +55,8 @@ class EbusdNumber(EbusdBaseEntity, NumberEntity):
         await self.coordinator.client.write(
             self._desc.circuit, self._desc.message, out
         )
-        # Nach dem Schreiben frisch lesen, sonst bleibt der (nicht gepollte)
-        # Sollwert in /data leer -> Entity würde "nicht verfügbar".
+        # Read back right after writing, otherwise the (unpolled) setpoint
+        # stays empty in /data -> the entity would show as "unavailable".
         try:
             await self.coordinator.client.read(
                 self._desc.circuit, self._desc.message

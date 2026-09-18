@@ -1,27 +1,28 @@
 type,circuit,level,name,comment,qq,zz,pbsb,id,*name,part,type,divisor/values,unit,comment
-# Vaillant eloBlock VE24 (Art. 0010023696) hinter einem VR32/V32-Buskoppler auf
-# Adresse 38. Der Koppler meldet sich selbst als V32, reicht die Vaillant-Befehle
-# aber an das Geraet dahinter durch -- daher die BAI-Register ueber b509.
+# Vaillant eloBlock VE24 (Art. 0010023696) behind a VR32/V32 bus coupler at
+# address 38. The coupler reports itself as V32, but passes the Vaillant
+# commands through to the device behind it -- hence the BAI registers via b509.
 #
-# Poll-Prioritaeten bewusst sparsam: ebusd liest EINE Nachricht je pollinterval
-# und rotiert ueber alle mit Prioritaet. r1 bekommt nur, was sich im Betrieb
-# aendert UND was kein anderer Busteilnehmer abfragt. Alles andere traegt kein
-# r<n> und wird bei Bedarf (Top-up der Integration) gelesen.
+# Poll priorities deliberately sparse: ebusd reads ONE message per pollinterval
+# and rotates through all of them by priority. r1 only gets messages that change
+# during operation AND that no other bus participant polls. Everything else
+# carries no r<n> and is read on demand (the integration's top-up).
 *r,elo
 *w,elo
-# --- Live-Werte (rotieren in ebusd) -----------------------------------------
+# --- Live values (rotate in ebusd) ------------------------------------------
 r1,,,FlowTemp,d.40 flow temperature,,,b509,0d1800,value,,D2C,,°C,temperature,ign,,IGN:1,,,
 r1,,,PumpState,pump status,,,b511,01,ign,,IGN:6,,,,value,,UCH,0=off;1=on;2=overrun;4=hwc,,pump status
-# Statuscode als Klartext (Vaillant S.xx). Werte direkt an Statenumber, KEINE
-# zweite Nachricht aufs selbe Register 0dab00 (ebusd lehnt Duplikate ab). 24 =
-# Warmwasserbetrieb ist feldverifiziert (14,45 kW + Vorlauf 57 °C gleichzeitig
-# mit Statenumber 31->24). Unbekannte Codes zeigt ebusd als Zahl.
-r1,,,Statenumber,status number,,,b509,0dab00,value,,UCH,0=kein_bedarf;4=heizen;7=pumpennachlauf;24=warmwasser;31=sommer;34=frostschutz,,
-# d.05 (nicht d.09) laut Akeebaby #254; Name beibehalten, um die HA-Entitaet nicht zu brechen.
+# Status code as plain text (Vaillant S.xx). Values appended directly to
+# Statenumber, NO second message on the same register 0dab00 (ebusd rejects
+# duplicates). 24 = domestic hot water mode is field-verified (14.45 kW + 57 °C
+# flow observed simultaneously with Statenumber 31->24). ebusd shows unknown
+# codes as a number.
+r1,,,Statenumber,status number,,,b509,0dab00,value,,UCH,0=no_demand;4=heating;7=pump_overrun;24=dhw;31=summer;34=frost_protection,,
+# d.05 (not d.09) per Akeebaby #254; name kept as-is so as not to break the HA entity.
 r1,,,FlowTempDemand,d.05 flow setpoint,,,b509,0d3900,value,,D2C,,°C,temperature
-# --- Betriebsanzeigen (aus Akeebabys #254-Karte, gegen unseren Scan validiert) -
-# Standardmaessig r (kein Poll): der eloBlock laeuft selten, das Top-up reicht.
-# Bei Bedarf einzelne auf r1 setzen, um einen Lauf live zu verfolgen.
+# --- Operation indicators (from Akeebaby's #254 map, validated against our scan) -
+# Default r (no poll): the eloBlock runs rarely, the top-up is enough.
+# Set individual ones to r1 if needed, to follow a run live.
 r,,,HeatingDemand,d.23 heating demand,,,b509,0d4000,value,,UCH,0=no;1=yes,,
 r,,,HwcDemand,d.22 DHW demand,,,b509,0d5800,value,,UCH,0=no;1=yes,,
 r,,,PositionValveSet,d.35 diverter valve,,,b509,0d5400,value,,UCH,0=heating;40=middle;100=dhw,,
@@ -30,64 +31,65 @@ r,,,ModulationDesired,modulation setpoint,,,b509,0d2e00,value,,SIN,10,%,modulati
 r,,,WP,d.10 internal pump,,,b509,0d4400,value,,UCH,0=off;1=on,,
 r,,,PumpPower,d.15 current pump power,,,b509,0d7300,value,,UCH,,,
 r,,,Storageloadpump,d.12 storage load pump,,,b509,0d9e00,value,,UCH,,%,
-# Regler-Freigaben (Sub 03), NUR lesend -- zeigen, ob der sensoCOMFORT den
-# eloBlock freigibt. Schreiben waere die PV-Ueberschuss-Steuerung, birgt aber
-# Konflikt mit dem Regler am geteilten Bus -> vorerst nicht schreibbar.
+# Regulator releases (sub 03), READ ONLY -- show whether the sensoCOMFORT
+# releases the eloBlock. Writing would be the PV-surplus control, but risks
+# conflicting with the regulator on the shared bus -> not writable for now.
 r,,,HeatingSwitch,d.23 wintermode active,,,b509,0df203,value,,UCH,0=off;1=on,,
 r,,,HwcSwitch,DHW on/off,,,b509,0df303,value,,UCH,0=off;1=on,,
-# --- UNVERIFIZIERTE Register (Sub 03) ----------------------------------------
-# ACHTUNG: Die Adressen 3703/3803/4003 sind NICHT belegt. Die Gfermoto/Vaillant-
-# Quelle fuehrt D.152/153/155 ausdruecklich als "Adresse unbekannt" (????01,
-# auskommentiert) und bittet um einen Grab-Diff-Scan. Unsere Hex-Reads lieferten
-# nur 0/0/0 = plausibel fuer einen Ruhezustand, aber KEIN Beleg fuer diese Codes.
-# Daher: nur lesend, klar als unbestaetigt markiert. Schreiben (0e3703/0e3803)
-# BEWUSST auskommentiert -- Schreiben auf unbekannte Register eines Notheizers
-# ist zu riskant, bis die Adressen per Grab-Diff belegt sind.
+# --- UNVERIFIED registers (sub 03) --------------------------------------------
+# WARNING: addresses 3703/3803/4003 are NOT confirmed. The Gfermoto/Vaillant
+# source explicitly lists D.152/153/155 as "address unknown" (????01,
+# commented out) and asks for a grab-diff scan. Our hex reads only returned
+# 0/0/0 = plausible for an idle state, but NO proof for these codes.
+# Therefore: read-only, clearly marked as unconfirmed. Writing (0e3703/0e3803)
+# is DELIBERATELY commented out -- writing to unknown registers of a backup
+# heater is too risky until the addresses are confirmed via grab-diff.
 r,,,ProbeReg4003,d.155? current power (UNVERIFIZIERT),,,b509,0d4003,value,,UIN,,,addr unconfirmed
 r,,,ProbeReg3703,d.152? power limiter phase (UNVERIFIZIERT),,,b509,0d3703,value,,UCH,,,addr unconfirmed
 r,,,ProbeReg3803,d.153? power limiter value (UNVERIFIZIERT),,,b509,0d3803,value,,UIN,,,addr unconfirmed
 #w,elo,install,PowerLimiterPhaseSet,d.152 set power limiter phase,,,b509,0e3703,value,,UCH,0=nolimit;1=phase1;2=phase2;3=phase3;4=allphases,,
 #w,elo,install,PowerLimiterValueSet,d.153 set power limiter reduction,,,b509,0e3803,value,,UIN,100,kW,subtracted from max power
-# --- Langsam veraenderlich ---------------------------------------------------
+# --- Slowly changing ----------------------------------------------------------
 r,,,WaterPressure,water pressure,,,b509,0d0200,value,,FLT,,bar,pressure,ign,,IGN:1,,,
 r,,,Templimiter,temperature limiter,,,b509,0d7700,value,,UCH,240=off;15=on,,
 r,,,Currenterror,current errors,,,b503,0001,error,,UIN,,,error number,error_1,,UIN,,,error number,error_2,,UIN,,,error number,error_3,,UIN,,,error number,error_4,,UIN,,,error number
-# --- Betriebszaehler D.80 Heizstunden: KEIN bestaetigter Zaehler -------------
-# Gfermotos dokumentierte Adresse 0d2800 liefert am VE24 roh 020000 = 0. Fuer
-# einen Backup-Heizer, der praktisch nie laeuft, sind 0 Heizstunden ERWARTET ->
-# 2800 ist damit hoechstwahrscheinlich das echte D.80 (Wert 0, uninteressant).
-# 3A03 liefert 45 -- aber wenn der Heizer nie lief, koennen das keine Heizstunden
-# sein; 3A03 ist ein unidentifiziertes Register. Beide daher nur als Probe.
-# Sichere Zuordnung braucht einen echten Heizlauf + Grab-Diff.
+# --- Operating counter D.80 heating hours: NO confirmed counter -------------
+# Gfermoto's documented address 0d2800 returns raw 020000 = 0 on the VE24. For
+# a backup heater that practically never runs, 0 heating hours is EXPECTED ->
+# 2800 is therefore most likely the real D.80 (value 0, not interesting).
+# 3A03 returns 45 -- but if the heater never ran, that can't be heating hours;
+# 3A03 is an unidentified register. Both kept only as probes for that reason.
+# A reliable mapping needs an actual heating run + grab-diff.
 r,,,ProbeReg2800,d.80? heating hours (Gfermoto addr - reads 0),,,b509,0d2800,value,,UIN,,,addr per source; value 0
 r,,,ProbeReg3a03,unidentified - reads 45 - not proven as D.80,,,b509,0d3a03,value,,UIN,,,addr unconfirmed
 r,,,TemplimiterCutoffs,d.60 safety limiter cut offs,,,b509,0d2000,value,,UCH,,,
-# --- Einstellungen / Typschild (praktisch konstant) --------------------------
+# --- Settings / nameplate (practically constant) ------------------------------
 r,,,PartloadHcKW,d.00 heating partload,,,b509,0d6c00,value,,UCH,,kW,heating part load
-# PartloadHwcKW nur LESEND. ebusd behandelt Lesen (0da900) und Schreiben (0ea900)
-# desselben Registers als Paar: gleicher Name -> Schreibzeile faellt STILL weg;
-# eigener Name (PartloadHwcKWSet) -> die LESEzeile faellt weg (element not found).
-# Beides zugleich geht in der Scan-Config nicht -> Lesewert hat Vorrang. Schreiben
-# bei Bedarf per Hex (38b509040ea900<kW>) oder dem ebus_heating_control.write-Service.
+# PartloadHwcKW READ ONLY. ebusd treats read (0da900) and write (0ea900) of the
+# same register as a pair: same name -> the write line SILENTLY drops out;
+# a different name (PartloadHwcKWSet) -> the READ line drops out (element not
+# found). Both at once doesn't work in scan config -> the read value wins.
+# Write if needed via hex (38b509040ea900<kW>) or the ebus_heating_control.write service.
 r,,,PartloadHwcKW,d.77 hot water partload,,,b509,0da900,value,,UCH,,kW,storage charging power
 #w,elo,install,PartloadHwcKWSet,d.77 set hot water partload,,,b509,0ea900,value,,UCH,,kW,storage charging power
-# PowerValue 0daa00: STATISCHE Min/Max-Leistungsdaten (typschildartig), NICHT die
-# aktuelle Leistung -- Schreibtest an PartloadHwc aenderte sie nicht. 0x18=24 =
-# VE24-Max in kW, Rest undekodiert -> bewusst als HEX-Diagnosewert belassen.
-r,,,PowerValue,power values min/max (statisch),,,b509,0daa00,value,,HEX:6,,,
-# HwcTemp 0d0100 = WW-SOLLWERT den der eloBlock vorgegeben bekommt (Spiegel);
-# NICHT die Ist-Speichertemp (die kommt via ctlv3 HwcStorageTemp). Feldbestaetigt:
-# beim WW-Bereiten 60, sonst ~50 -- also nutzbar, daher wieder aktiv.
+# PowerValue 0daa00: STATIC min/max power data (nameplate-like), NOT the
+# current power -- a write test on PartloadHwc didn't change it. 0x18=24 =
+# VE24 max in kW, the rest undecoded -> deliberately left as a HEX diagnostic value.
+r,,,PowerValue,power values min/max (static),,,b509,0daa00,value,,HEX:6,,,
+# HwcTemp 0d0100 = the DHW SETPOINT given to the eloBlock (a mirror);
+# NOT the actual tank temperature (that comes via ctlv3 HwcStorageTemp).
+# Field-confirmed: 60 while producing DHW, ~50 otherwise -- so usable, hence
+# active again.
 r,,,HwcTemp,DHW setpoint mirror,,,b509,0d0100,value,,D2C,,°C,temperature
-# unbestaetigt: Akeebaby verortet d.20 bei 0d4304; unser 0dd900 (=70) ist ungeklaert.
-r,,,HwcTempMax,d.20 max tank setpoint (unverifiziert),,,b509,0dd900,value,,D2C,,°C,temperature
-# --- unverifiziert: nicht in Akeebabys #254-Karte, Werte plausibel, Labels aber
-#     Community-Rateschaetzung (evtl. Gaskessel-Register) ------------------------
-r,,,AntiCondensValue,d.85 minimal power (unverifiziert),,,b509,0dec00,value,,UCH,,kW,
-r,,,HcPumpMode,d.18 pump mode (unverifiziert),,,b509,0db700,value,,UCH,0=post_run;1=permanent;2=winter;3=eco,,
-r,,,BlockTimeHcMax,d.02 max blocking time (unverifiziert),,,b509,0d2100,value,,UCH,,min,minutes
-r,,,EBusHeatcontrol,d.90 digital control recognized (unverifiziert),,,b509,0d7400,value,,UCH,0=no;1=yes,,
-r,,,WarmstartEnable,d.66 warmstart (unverifiziert),,,b509,0d5b00,value,,UCH,0=off;1=on,,
+# unconfirmed: Akeebaby places d.20 at 0d4304; our 0dd900 (=70) is unresolved.
+r,,,HwcTempMax,d.20 max tank setpoint (unverified),,,b509,0dd900,value,,D2C,,°C,temperature
+# --- unverified: not in Akeebaby's #254 map, values plausible, but labels are
+#     a community guess (possibly gas-boiler registers) --------------------------
+r,,,AntiCondensValue,d.85 minimal power (unverified),,,b509,0dec00,value,,UCH,,kW,
+r,,,HcPumpMode,d.18 pump mode (unverified),,,b509,0db700,value,,UCH,0=post_run;1=permanent;2=winter;3=eco,,
+r,,,BlockTimeHcMax,d.02 max blocking time (unverified),,,b509,0d2100,value,,UCH,,min,minutes
+r,,,EBusHeatcontrol,d.90 digital control recognized (unverified),,,b509,0d7400,value,,UCH,0=no;1=yes,,
+r,,,WarmstartEnable,d.66 warmstart (unverified),,,b509,0d5b00,value,,UCH,0=off;1=on,,
 r,,,CirPump,d.13 circulation pump,,,b509,0d7b00,value,,UCH,0=off;1=on,,
 r,,,BoilerType,boiler type,,,b509,0d5e00,value,,UCH,,,
 r,,,DSN,device specific number,,,b509,0d9a00,value,,UIN,,,

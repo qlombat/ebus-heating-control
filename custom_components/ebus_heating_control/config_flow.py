@@ -1,4 +1,4 @@
-"""Config-Flow (Host + TCP/HTTP-Port) + Options-Flow (Poll-Intervall + Ausschluss)."""
+"""Config flow (host + TCP/HTTP port) + options flow (poll interval + exclude)."""
 from __future__ import annotations
 
 import voluptuous as vol
@@ -71,7 +71,7 @@ class EbusdConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=user_input[CONF_HOST], data=user_input
                 )
 
-        # Host mit der HA-Host-IP vorbelegen (ebusd läuft i. d. R. lokal als Add-on).
+        # Pre-fill the host with the HA host IP (ebusd usually runs locally as an add-on).
         if user_input and user_input.get(CONF_HOST):
             default_host = user_input[CONF_HOST]
         else:
@@ -120,11 +120,11 @@ class EbusdOptionsFlow(config_entries.OptionsFlow):
                     CONF_FAST,
                     default=opts.get(CONF_FAST, DEFAULT_FAST),
                 ): str,
-                # Kessel-Modulationsregelung: nur aktiv, wenn ein Raumsensor
-                # gesetzt ist (siehe climate.py) -- deshalb ohne Default, damit
-                # er leer bleiben kann (Nutzer kann ihn wieder leeren). Der
-                # Außensensor ist zusätzlich optional: ohne ihn entfällt nur die
-                # Heizkurve, die Raum-PI-Regelung läuft trotzdem (siehe
+                # Boiler modulation regulation: only active when a room sensor
+                # is set (see climate.py) -- no default on purpose, so it can
+                # stay empty (the user can clear it again). The outdoor sensor
+                # is additionally optional: without it only the heating curve
+                # is skipped, the room-PI regulation still runs (see
                 # regulation.compute_flow_setpoint).
                 vol.Optional(
                     CONF_BOILER_ROOM_SENSOR,

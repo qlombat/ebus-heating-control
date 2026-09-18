@@ -1,4 +1,4 @@
-"""Switch-Plattform: schreibbare An/Aus-Felder (reine On/Off-Enums)."""
+"""Switch platform: writable on/off fields (pure on/off enums)."""
 from __future__ import annotations
 
 from typing import Any
@@ -16,7 +16,7 @@ from .coordinator import EbusdCoordinator
 from .entity import EbusdBaseEntity, add_fields_dynamically, build_device_info
 from .model import FieldDesc, bool_tokens, is_binary, value_is_on
 
-# Kuratierter Warmwasser-Boost aus der Sonderfunktion HwcSFMode (Einmalladung).
+# Curated DHW boost from the HwcSFMode special function (one-off load).
 BOOST_MESSAGE = "HwcSFMode"
 BOOST_ON = "load"
 BOOST_OFF = "auto"
@@ -34,7 +34,7 @@ async def async_setup_entry(
             lambda d: EbusdSwitch(coordinator, d),
         )
     )
-    # Kuratierter Overlay: Warmwasser-Boost (HwcSFMode kennt den Wert "load")
+    # Curated overlay: DHW boost (HwcSFMode knows the value "load")
     seen: set[str] = set()
     boosts = []
     for d in coordinator.fields:
@@ -70,7 +70,7 @@ class EbusdSwitch(EbusdBaseEntity, SwitchEntity):
         await self.coordinator.client.write(
             self._desc.circuit, self._desc.message, token
         )
-        # Nach dem Schreiben frisch lesen (nicht gepollte Werte sonst leer).
+        # Read back right after writing (unpolled values would stay empty otherwise).
         try:
             await self.coordinator.client.read(
                 self._desc.circuit, self._desc.message
@@ -81,10 +81,10 @@ class EbusdSwitch(EbusdBaseEntity, SwitchEntity):
 
 
 class EbusdBoostSwitch(CoordinatorEntity[EbusdCoordinator], SwitchEntity):
-    """Warmwasser-Boost: HwcSFMode = load (ein) / auto (aus)."""
+    """DHW boost: HwcSFMode = load (on) / auto (off)."""
 
     _attr_has_entity_name = True
-    _attr_name = "Warmwasser-Boost"
+    _attr_name = "DHW boost"
     _attr_icon = "mdi:water-plus"
 
     def __init__(self, coordinator: EbusdCoordinator, desc: FieldDesc) -> None:
@@ -115,7 +115,7 @@ class EbusdBoostSwitch(CoordinatorEntity[EbusdCoordinator], SwitchEntity):
                 self._desc.circuit, self._desc.message, token
             )
         except EbusdError as err:
-            raise HomeAssistantError(f"Boost-Write fehlgeschlagen: {err}") from err
+            raise HomeAssistantError(f"Boost write failed: {err}") from err
         try:
             await self.coordinator.client.read(
                 self._desc.circuit, self._desc.message

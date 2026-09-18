@@ -1,4 +1,4 @@
-"""eBUS Heating Control – native HA-Integration über ebusds HTTP-JSON + TCP (ohne MQTT)."""
+"""eBUS Heating Control – native HA integration over ebusd's HTTP-JSON + TCP (no MQTT)."""
 from __future__ import annotations
 
 import logging
@@ -49,7 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         fields, device_meta = await client.get_definitions()
     except EbusdError as err:
-        raise ConfigEntryNotReady(f"ebusd-Definitionen: {err}") from err
+        raise ConfigEntryNotReady(f"ebusd definitions: {err}") from err
 
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     exclude = [
@@ -71,12 +71,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     await coordinator.async_config_entry_first_refresh()
 
-    # Wochen-Zeitprogramm-Speicher je Kessel-Regelungs-Kreis VOR dem Plattform-
-    # Setup anlegen: climate.py (liest) und calendar.py (schreibt) teilen sich
-    # dieselbe Instanz je Kreis, damit Kalender-Änderungen ohne Neuladen von
-    # der Platte sofort im Regelzyklus ankommen. Nur wenn die Kessel-Regelung
-    # per Raumsensor aktiviert ist (sonst gibt es keine passende Climate-Entity,
-    # die den Zeitplan überhaupt anwenden würde).
+    # Create the weekly-schedule store per boiler-regulation circuit BEFORE
+    # platform setup: climate.py (reads) and calendar.py (writes) share the
+    # same instance per circuit, so calendar changes reach the regulation
+    # cycle immediately without a reload. Only when boiler regulation is
+    # enabled via a room sensor (otherwise there's no matching climate entity
+    # that would even apply the schedule).
     if entry.options.get(CONF_BOILER_ROOM_SENSOR):
         for circuit in boiler_circuits(coordinator):
             coordinator.heating_schedule_stores[circuit] = HeatingScheduleStore(
@@ -85,7 +85,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
-    # Bridge-Elterngerät: die eBUS-Kreise hängen per via_device darunter.
+    # Bridge parent device: the eBUS circuits attach to it via via_device.
     registry = dr.async_get(hass)
     registry.async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -97,10 +97,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         configuration_url=f"http://{host}:{entry.data.get(CONF_HTTP_PORT, DEFAULT_HTTP_PORT)}/data",
     )
 
-    # Ein Gerät je gescanntem eBUS-Kreis anlegen -- auch ohne (Wert-)Entität,
-    # damit jeder Bus-Teilnehmer mit Firmware/Hardware sichtbar ist. Sonst
-    # taucht z. B. das sensoNET nie auf, das ausser der Kennung nichts am Bus
-    # preisgibt. Entitäten hängen sich später über dieselben identifiers an.
+    # Create one device per scanned eBUS circuit -- even without a (value)
+    # entity, so every bus participant with firmware/hardware is visible.
+    # Otherwise, e.g. the sensoNET would never show up, since it exposes
+    # nothing on the bus besides its identification. Entities attach to
+    # these later via the same identifiers.
     for circuit in coordinator.device_meta:
         registry.async_get_or_create(
             config_entry_id=entry.entry_id,
@@ -114,7 +115,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Bei geänderten Optionen die Integration neu laden."""
+    """Reload the integration when options change."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 

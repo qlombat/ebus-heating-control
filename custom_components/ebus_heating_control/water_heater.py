@@ -1,9 +1,9 @@
-"""Water-heater-Plattform: Warmwasser (Hwc) als echte HA-water_heater-Entity.
+"""Water heater platform: domestic hot water (Hwc) as a real HA water_heater entity.
 
-Kuratierter Vaillant-Overlay: erkennt die sensoCOMFORT-WW-Register
-(`HwcTempDesired` / `HwcStorageTemp` / `HwcOpMode`) und bildet daraus ein
-water_heater ab. Fehlen die Nachrichten (Nicht-Vaillant), entsteht kein Gerät.
-Die rohen Einzel-Entitäten bleiben zusätzlich bestehen.
+Curated Vaillant overlay: detects the sensoCOMFORT DHW registers
+(`HwcTempDesired` / `HwcStorageTemp` / `HwcOpMode`) and builds a water_heater
+entity from them. If the messages are missing (non-Vaillant), no device is
+created. The raw individual entities remain available in addition.
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ async def async_setup_entry(
     for circuit in {d.circuit for d in coordinator.fields}:
         target = _find(coordinator.fields, circuit, _TARGET)
         if target is None or not target.writable:
-            continue  # ohne schreibbaren Sollwert kein sinnvolles water_heater
+            continue  # no sensible water_heater without a writable setpoint
         entities.append(
             EbusdWaterHeater(
                 coordinator,
@@ -61,7 +61,7 @@ async def async_setup_entry(
 
 class EbusdWaterHeater(CoordinatorEntity[EbusdCoordinator], WaterHeaterEntity):
     _attr_has_entity_name = True
-    _attr_name = "Warmwasser"
+    _attr_name = "Domestic hot water"
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = 35
     _attr_max_temp = 70
@@ -130,7 +130,7 @@ class EbusdWaterHeater(CoordinatorEntity[EbusdCoordinator], WaterHeaterEntity):
         try:
             await self.coordinator.client.write(desc.circuit, desc.message, value)
         except EbusdError as err:
-            raise HomeAssistantError(f"WW-Write fehlgeschlagen: {err}") from err
+            raise HomeAssistantError(f"DHW write failed: {err}") from err
         try:
             await self.coordinator.client.read(desc.circuit, desc.message)
         except EbusdError:

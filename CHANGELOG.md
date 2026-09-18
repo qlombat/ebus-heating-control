@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.5
+- Translated all remaining German comments, docstrings, error messages, and entity display names across the codebase to English (source code, tests, and the `contrib/ebusd-config/` reference files). This was leftover text from the upstream project; behavior is unchanged. `translations/de.json` (the German HA UI locale) is intentionally kept as-is, since it's an actual localization rather than developer notes.
+- A few entity friendly names changed as part of this (e.g. "Warmwasser" -> "Domestic hot water", "Warmwasser-Boost" -> "DHW boost", bridge diagnostic sensor names, "<prefix> Zeitprogramm" -> "<prefix> schedule"). Existing `entity_id`s are unaffected; only the displayed name updates.
+
 ## 1.8.4 - BREAKING
 - **Domain renamed**: `ebus_bridge` → `ebus_heating_control`, matching the repo/display name. This is a breaking change for existing installs:
   - The integration folder moved from `custom_components/ebus_bridge/` to `custom_components/ebus_heating_control/`.

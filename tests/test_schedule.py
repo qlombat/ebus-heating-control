@@ -1,4 +1,4 @@
-"""Unit-Tests für schedule.py (HA-frei, direkt per Pfad geladen)."""
+"""Unit tests for schedule.py (HA-free, loaded directly by path)."""
 import importlib.util
 import sys
 from datetime import time
@@ -58,9 +58,9 @@ def test_overnight_window_morning_portion_next_weekday():
 
 
 def test_overnight_window_does_not_leak_into_same_day_morning():
-    # Samstag 02:00 (VOR dem 22:00-06:00-Fenster desselben Wochentags) darf
-    # nicht fälschlich als "noch aktiv" gelten -- das Fenster hat an diesem
-    # Wochentag ja noch gar nicht begonnen.
+    # Saturday 02:00 (BEFORE that same weekday's 22:00-06:00 window) must not
+    # wrongly count as "still active" -- the window hasn't even started yet
+    # on this weekday.
     events = [_ev(5, (22, 0), (6, 0), 17.0)]
     assert schedule.active_setpoint(events, weekday=5, now=time(2, 0)) is None
 

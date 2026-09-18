@@ -1,4 +1,4 @@
-"""Unit-Tests für model.py (HA-frei, direkt per Pfad geladen)."""
+"""Unit tests for model.py (HA-free, loaded directly by path)."""
 import importlib.util
 from pathlib import Path
 
@@ -73,7 +73,7 @@ def test_parse_values_reads_only():
     assert values[("ctlv3", "Hc1HeatCurve", "value")] == 0.8
     assert values[("ctlv3", "Hc1MinFlowTempDesired", "value")] == 30.0
     assert values[("ctlv3", "PumpMode", "value")] == "off"
-    # Ident- und Scan-Nachrichten liefern keine Werte
+    # Ident and scan messages return no values
     assert not any(c == "scan.15" for (c, _m, _f) in values)
     assert ("ctlv3", "scan.15 id", "mf") not in values
 
@@ -82,7 +82,7 @@ def test_definitions_temperature_bounds_allow_negative():
     d = _by_key(model.parse_definitions(SAMPLE))[
         ("ctlv3", "Hc1MinFlowTempDesired", "value")
     ]
-    # A1: °C darf negativ sein (kein Klemmen bei 0)
+    # A1: °C may be negative (no clamping at 0)
     assert d.min_value == -60
     assert d.max_value == 150
     assert d.step == 0.5
@@ -92,18 +92,18 @@ def test_definitions_temperature_bounds_allow_negative():
 
 def test_definitions_writable_from_write_message():
     d = _by_key(model.parse_definitions(SAMPLE))[("ctlv3", "Hc1HeatCurve", "value")]
-    assert d.writable is True          # aus der -w-Nachricht
-    assert d.numeric is True           # EXP ohne values
+    assert d.writable is True          # from the -w message
+    assert d.numeric is True           # EXP without values
     assert d.unit is None              # "" -> None
 
 
 def test_definitions_skip_ign_and_ident_and_multi_label():
     descs = _by_key(model.parse_definitions(SAMPLE))
-    # IGN-Feld wird übersprungen
+    # IGN field is skipped
     assert ("ctlv3", "Status01", "ign") not in descs
-    # Mehrfeld -> Label "<message> <field>"
+    # Multi-field -> label "<message> <field>"
     assert descs[("ctlv3", "Status01", "flow")].label == "Status01 flow"
-    # Ident/Scan erzeugt keine Entity
+    # Ident/scan doesn't create an entity
     assert not any(m == "scan.15 id" for (_c, m, _f) in descs)
 
 
@@ -121,7 +121,7 @@ def test_parse_global_filters_keys():
 
 
 def test_parse_definitions_survives_global_int_messages():
-    # global.messages ist ein int -> darf nicht crashen
+    # global.messages is an int -> must not crash
     assert model.parse_definitions({"global": {"messages": 605}}) == []
 
 
@@ -157,7 +157,7 @@ def test_value_is_on():
 
 
 def test_parse_ages_reads_lastup_per_message():
-    """`?verbose` liefert `lastup` je Nachricht -- Grundlage der Frische-Erkennung."""
+    """`?verbose` returns `lastup` per message -- the basis for freshness detection."""
     data = {
         "ctlv3": {
             "messages": {
@@ -182,13 +182,13 @@ def test_parse_ages_reads_lastup_per_message():
 
 
 def test_parse_ages_skips_messages_without_lastup():
-    """Ohne `verbose` fehlt `lastup` -- dann darf nichts gemeldet werden."""
+    """Without `verbose`, `lastup` is missing -- then nothing may be reported."""
     data = {"c": {"messages": {"M": {"name": "M", "fields": {}}}}}
     assert model.parse_ages(data) == {}
 
 
 def test_parse_definitions_passive_multifield_readonly():
-    """SetMode (passiv, mehrfeldrig) -> Felder read-only + passive-Flag."""
+    """SetMode (passive, multi-field) -> fields read-only + passive flag."""
     data = {"wp0": {"messages": {"SetMode": {
         "name": "SetMode", "passive": True, "write": True,
         "fielddefs": [
@@ -202,7 +202,7 @@ def test_parse_definitions_passive_multifield_readonly():
 
 
 def test_parse_definitions_single_field_write_is_writable():
-    """Einzelfeld-Write bleibt schreibbar; nicht passiv."""
+    """A single-field write stays writable; not passive."""
     data = {"c": {"messages": {
         "Temp": {"name": "Temp", "write": False,
                  "fielddefs": [{"name": "value", "type": "EXP", "unit": "°C"}]},
@@ -214,7 +214,7 @@ def test_parse_definitions_single_field_write_is_writable():
 
 
 def test_parse_values_includes_passive_command():
-    """releasebackup aus der passiv mitgehörten SetMode wird sichtbar."""
+    """releasebackup from the passively overheard SetMode becomes visible."""
     data = {"wp0": {"messages": {"SetMode": {
         "name": "SetMode", "passive": True, "write": True,
         "fields": {"releasebackup": {"name": "releasebackup", "value": 1}},
@@ -223,7 +223,7 @@ def test_parse_values_includes_passive_command():
 
 
 def test_parse_values_skips_pure_write():
-    """Reine Write-Nachricht (nicht passiv) liefert keinen Wert."""
+    """A pure write message (not passive) returns no value."""
     data = {"c": {"messages": {"Cmd": {
         "name": "Cmd", "write": True,
         "fields": {"value": {"name": "value", "value": 5}},
@@ -236,7 +236,7 @@ def _one(data):
 
 
 def test_divisor_folds_into_step_for_integer_types():
-    """UIN/SCH mit Divisor 10 -> Schritt 0.1 (COP, aktuelle Leistung)."""
+    """UIN/SCH with divisor 10 -> step 0.1 (COP, current power)."""
     for btype in ("UIN", "SCH"):
         d = _one({"c": {"messages": {"CopHc": {
             "name": "CopHc",
@@ -246,7 +246,7 @@ def test_divisor_folds_into_step_for_integer_types():
 
 
 def test_no_divisor_keeps_integer_step():
-    """UCH ohne Divisor (eloBlock PartLoad) bleibt Schritt 1 -> 0 Stellen."""
+    """UCH without a divisor (eloBlock PartLoad) stays step 1 -> 0 decimals."""
     d = _one({"c": {"messages": {"PartloadHcKW": {
         "name": "PartloadHcKW", "unit": "kW",
         "fielddefs": [{"name": "value", "type": "UCH", "unit": "kW"}],
@@ -255,7 +255,7 @@ def test_no_divisor_keeps_integer_step():
 
 
 def test_factor_negative_divisor_stays_coarse():
-    """Faktor (Divisor < 0) verfeinert nicht -> Schritt bleibt 1."""
+    """A factor (divisor < 0) doesn't refine -> step stays 1."""
     d = _one({"c": {"messages": {"HwcStarts": {
         "name": "HwcStarts",
         "fielddefs": [{"name": "value", "type": "UIN", "divisor": -100}],
@@ -264,7 +264,7 @@ def test_factor_negative_divisor_stays_coarse():
 
 
 def test_parse_decode_errors_collects_broken_messages():
-    """Nachrichten mit `decodeerror` werden erkannt, saubere nicht."""
+    """Messages with `decodeerror` are detected, clean ones are not."""
     data = {"ctlv3": {"messages": {
         "Z2Shortname": {"name": "Z2Shortname", "decodeerror": "ERR: invalid position"},
         "HwcTempDesired": {"name": "HwcTempDesired",
@@ -288,11 +288,11 @@ def _wc_fd(**kw):
 
 
 def test_writable_control_only_for_number_select_switch():
-    # schreibbares Text-Feld (Zonen-Kurzbezeichnung) -> keine Schreib-Plattform
+    # writable text field (zone short label) -> no write platform
     assert model.writable_control(_wc_fd(writable=True)) is False
-    # schreibbar numerisch -> number
+    # writable numeric -> number
     assert model.writable_control(_wc_fd(writable=True, numeric=True, step=1)) is True
-    # schreibbar mit Werte-Liste -> select/switch
+    # writable with a value list -> select/switch
     assert model.writable_control(_wc_fd(writable=True, values={"0": "off"})) is True
-    # read-only -> nie Schreib-Control
+    # read-only -> never a write control
     assert model.writable_control(_wc_fd(writable=False, numeric=True)) is False
