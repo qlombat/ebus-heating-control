@@ -84,7 +84,7 @@ No MQTT broker is required anywhere in this chain.
 ## Installation
 
 **Via HACS** (recommended):
-1. HACS → ⋮ → *Custom repositories* → add `https://github.com/qlombat/ebus_bridge`,
+1. HACS → ⋮ → *Custom repositories* → add `https://github.com/qlombat/ebus-heating-control`,
    category *Integration*.
 2. Install **eBUS Bridge** from HACS → restart Home Assistant.
 
