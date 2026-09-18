@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.8.6
+- README: added a "Case study" section walking through a real installation end to end (Bulex/Vaillant `BAI` boiler, wireless Exacontrol E7 removed and replaced by a Wi-Fi eBUS adapter) — physical wiring, ebusd add-on config, boiler detection output, a manual `SetMode` write with a field-by-field breakdown, and how that manual test maps onto the built-in boiler regulation and weekly schedule features. Documentation only, no code changes.
+
 ## 1.8.5
 - Translated all remaining German comments, docstrings, error messages, and entity display names across the codebase to English (source code, tests, and the `contrib/ebusd-config/` reference files). This was leftover text from the upstream project; behavior is unchanged. `translations/de.json` (the German HA UI locale) is intentionally kept as-is, since it's an actual localization rather than developer notes.
 - A few entity friendly names changed as part of this (e.g. "Warmwasser" -> "Domestic hot water", "Warmwasser-Boost" -> "DHW boost", bridge diagnostic sensor names, "<prefix> Zeitprogramm" -> "<prefix> schedule"). Existing `entity_id`s are unaffected; only the displayed name updates.
