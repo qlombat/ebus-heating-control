@@ -38,7 +38,7 @@ that no longer have a room controller on the bus.
 - [Bridge diagnostics](#bridge-diagnostics)
 - [Architecture](#architecture)
 - [Limitations](#limitations)
-- [Case study: replacing a wireless Exacontrol E7 on a Bulex boiler](#case-study-replacing-a-wireless-exacontrol-e7-on-a-bulex-boiler)
+- [Guides for real installations](#guides-for-real-installations)
 - [Development](#development)
 - [License](#license)
 
@@ -277,148 +277,14 @@ diagnostic entities, **disabled by default**.
   behaviour, if any. There is currently no separate watchdog on the Home Assistant
   side beyond the regular write cycle.
 
-## Case study: replacing a wireless Exacontrol E7 on a Bulex boiler
+## Guides for real installations
 
-A concrete, real-world walkthrough of setting this up from scratch, end to end —
-physical bus wiring through to a working modulating setpoint write. Useful as a
-reference if you're doing a similar Exacontrol removal.
+Step-by-step walkthroughs for specific real hardware setups (physical wiring,
+ebusd add-on config, a manual `SetMode` test, etc.) live in
+[`docs/installation-guides.md`](docs/installation-guides.md) rather than here,
+so more can be added over time without cluttering this reference doc.
 
-**Hardware:** a Bulex gas boiler (Bulex is a Belgian brand within the Vaillant
-Group; the eBUS scan below correctly identifies it as a Vaillant `BAI`-circuit
-unit — expect this, it isn't a misdetection) with a wireless **Exacontrol E7**
-room controller, which this replaces entirely.
-
-### 1. Physical installation
-
-The Exacontrol was removed from the bus. This matters: keeping both the
-Exacontrol and an eBUS adapter powered on the bus at the same time caused
-issues in testing — **only one active regulator should be on the bus**. During
-the transition, Home Assistant becomes that regulator; the Exacontrol is no
-longer used at all.
-
-An ESP-based Wi-Fi eBUS adapter (a popular DIY design, sometimes referred to as
-the "Daniel Kucera adapter") was wired directly to the boiler's two eBUS wires
-and connected to the local network — no relay, dry contact, or ON/OFF module
-of any kind. That's the point of doing this over eBUS: the boiler stays fully
-modulating, never reduced to a simple on/off load.
-
-The resulting chain:
-
-```
-Bulex boiler (eBUS)
-        │
-        ▼
- Wi-Fi eBUS adapter ──── enh: protocol over TCP :3335
-        │
-        ▼
-      ebusd
-        │
-        ▼
-Home Assistant (this integration)
-```
-
-### 2. ebusd add-on
-
-Installed the [ebusd add-on](https://github.com/LukasGrebe/ha-addons), configured with:
-
-```
---device=enh:192.168.40.7:3335
---scanconfig
---httpport=8889
---pollinterval=30
---accesslevel=install
-```
-
-`--accesslevel=install` turned out to be required for writing `SetMode` later —
-without it, ebusd rejects the write outright (see [Requirements](#requirements)).
-
-ebusd's scan correctly detected the boiler:
-
-```
-scan 08: ;Vaillant;BAI00;0701;3302
-read scan config file vaillant/08.bai.csv
-found messages: 182
-```
-
-i.e. manufacturer `Vaillant`, model `BAI00`, software version `0701`, hardware
-version `3302`, at eBUS address `08` — 182 messages loaded from the stock
-`vaillant/08.bai.csv` definition file.
-
-### 3. Installing the integration
-
-Installed via HACS as described in [Installation](#installation) — no extra
-configuration needed beyond the host/port fields (both pre-filled with sane
-defaults). No MQTT broker involved anywhere in this chain: reads go over
-ebusd's HTTP-JSON API (`8889`), writes over its TCP command port (`8888`).
-
-This fork already includes the Home Assistant compatibility fixes and the
-`lastup`/`passive` discovery fixes needed for this to work smoothly out of the
-box on a recent Home Assistant — see [CHANGELOG.md](CHANGELOG.md) for the
-details if you're curious what those were. In short: without them, entity
-discovery silently stalled at a handful of `Currenterror` entities, and ebusd's
-log filled up with `ERR: end of input reached` every polling cycle from forced
-reads on write-only commands like `SetMode`.
-
-### 4. First manual write: proving modulation works
-
-Before configuring the automatic [boiler regulation](#boiler-regulation), it's
-worth validating the write path manually with the
-[`ebus_heating_control.write`](#service-ebus_heating_controlwrite) service —
-this is exactly what confirmed the whole chain works on this installation:
-
-```yaml
-action: ebus_heating_control.write
-data:
-  circuit: bai
-  message: SetMode
-  value: "auto;30;-;-;0;0;0;0;0;0"
-```
-
-`SetMode`'s ten `;`-separated fields, in order:
-
-| # | Field | Value used | Meaning |
-|---|---|---|---|
-| 1 | `hcmode` | `auto` | Let the boiler electronics decide heating vs. DHW; still honors the flow setpoint below. |
-| 2 | `flowtempdesired` | `30` | Requested flow (departure) temperature, °C. |
-| 3 | `hwctempdesired` | `-` | DHW setpoint — left unchanged. |
-| 4 | `hwcflowtempdesired` | `-` | DHW flow setpoint — left unchanged. |
-| 5 | `disablehc` | `0` | Heating **not** disabled. |
-| 6 | `disablehwctapping` | `0` | DHW tapping **not** disabled. |
-| 7 | `disablehwcload` | `0` | DHW loading **not** disabled. |
-| 8 | `remotecontrolhcpump` | `0` | No forced pump control. |
-| 9 | `releasebackup` | `0` | No backup heater release. |
-| 10 | `releasecooling` | `0` | No cooling release. |
-
-Before this write, `FlowTempDesired` read `60.00 °C` (the boiler's own
-default/last setpoint). Right after, it read `30.00 °C`, and stayed there —
-confirming the full path actually works, not just that the write was accepted:
-
-```
-Home Assistant → ebus_heating_control.write → ebusd → Wi-Fi eBUS adapter
-→ eBUS → boiler → FlowTempDesired = 30 °C
-```
-
-### 5. From a manual test to automatic regulation
-
-At this point Home Assistant could already read flow/return temperature,
-pressure, modulation percentage, flame/pump/heating/DHW switch states, and
-write an arbitrary `SetMode` by hand — but the boiler still needed a human (or
-an automation) to decide *what* setpoint to send and *when*.
-
-That decision logic is exactly what [Boiler regulation](#boiler-regulation) and
-the [Weekly heating schedule](#weekly-heating-schedule) sections above provide
-out of the box: a `climate` entity that continuously computes
-`flowtempdesired` from a room sensor (plus optionally an outdoor sensor and a
-heating curve), applies hysteresis so it actually stops calling for heat once
-the room is warm enough, and follows a weekly time/temperature schedule if
-configured — all while keeping `hcmode` at `auto` so DHW production stays
-completely unaffected by the heating on/off state. Enabling it only requires
-setting `boiler_room_sensor` (and optionally `boiler_outdoor_sensor`) in the
-integration's options; no more manual `SetMode` writes needed.
-
-
-
-```bash
+## Development
 pip install ruff pytest
 ruff check custom_components/
 pytest -q

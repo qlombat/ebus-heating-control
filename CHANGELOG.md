@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.8
+- `docs/installation-guides.md`: added a safety/responsibility warning at the top (electrical/gas risk, potential warranty/regulatory impact of removing a factory room controller, loss of the manufacturer's safety/comfort logic, no-warranty disclaimer) before the step-by-step instructions.
+
+## 1.8.7
+- Moved the real-installation walkthrough out of the README into a dedicated, growable [`docs/installation-guides.md`](docs/installation-guides.md), rewritten in an actionable step-by-step "how to" style (numbered steps, imperative instructions, troubleshooting pointers) instead of a narrative retrospective — meant to make room for future guides covering other boilers/adapters without bloating the main README.
+- Fixed a heading that was accidentally dropped from the README during the previous case-study edit (`## Development` had disappeared, leaving its content unlabeled under `## Limitations`).
+
 ## 1.8.6
 - README: added a "Case study" section walking through a real installation end to end (Bulex/Vaillant `BAI` boiler, wireless Exacontrol E7 removed and replaced by a Wi-Fi eBUS adapter) — physical wiring, ebusd add-on config, boiler detection output, a manual `SetMode` write with a field-by-field breakdown, and how that manual test maps onto the built-in boiler regulation and weekly schedule features. Documentation only, no code changes.
 
