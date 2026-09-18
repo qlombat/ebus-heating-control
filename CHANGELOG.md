@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.2
+- Repo renamed to `qlombat/ebus-heating-control` (was `qlombat/ebus_bridge`); `manifest.json` (`documentation`, `issue_tracker`) and the README's HACS custom-repository install instructions updated accordingly. The integration's internal `domain` (`ebus_bridge`) is unchanged, since that's the identifier Home Assistant already stores for existing installs and renaming it would break them.
+- CI: pinned `ruff==0.16.8` in `validate.yml` (was unpinned, so CI silently picked up a much newer ruff than tested locally and started failing on new default lints); fixed the resulting `I001` (import order) and `RUF012` (mutable class-level default) findings in `climate.py`/`services.py`.
+- Repo housekeeping: enabled Issues and added GitHub topics (required by HACS validation), added branch protection on `main`.
+
 ## 1.8.1
 - Boiler regulation now skips writing `SetMode` entirely while the boiler's physical/global winter-mode switch (`HeatingSwitch`) is off, instead of writing every cycle regardless. ebusd's log showed periodic `send to 08: ERR: read timeout, retry` bus errors that correlated with `HeatingSwitch` being off (the boiler appears to respond more sluggishly on the bus in that state); `SetMode` has no effect anyway while this switch is off, so there is no reason to keep sending it.
 - Fix: `EbusdBoilerClimate`'s flame-status lookup used the wrong field key (`(circuit, "Flame", "Flame")` instead of `(circuit, "Flame", "value")`, since ebusd's JSON names single-field messages' field "value", not the message name), so `hvac_action` never actually reported HEATING/IDLE from the real flame state.
