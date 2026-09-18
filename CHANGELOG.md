@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.8.9
+- README: added a **Troubleshooting** section covering the three most common points of confusion — a `climate` entity not appearing (missing `boiler_room_sensor` or missing Vaillant zone registers), orphaned `unavailable` entities left over from the `ebus_bridge` → `ebus_heating_control` domain rename, and delayed updates after manually changing something at the boiler outside Home Assistant (can take several minutes, by design — not a bug). Also fixed a missing ` ```bash ` code-fence opener under **Development** left over from an earlier edit.
+
 ## 1.8.8
 - `docs/installation-guides.md`: added a safety/responsibility warning at the top (electrical/gas risk, potential warranty/regulatory impact of removing a factory room controller, loss of the manufacturer's safety/comfort logic, no-warranty disclaimer) before the step-by-step instructions.
 

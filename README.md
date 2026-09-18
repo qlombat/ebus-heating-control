@@ -38,6 +38,7 @@ that no longer have a room controller on the bus.
 - [Bridge diagnostics](#bridge-diagnostics)
 - [Architecture](#architecture)
 - [Limitations](#limitations)
+- [Troubleshooting](#troubleshooting)
 - [Guides for real installations](#guides-for-real-installations)
 - [Development](#development)
 - [License](#license)
@@ -113,7 +114,7 @@ end up stuck as "unavailable".
 | `select` | Writable enum fields (operating modes), with their real option names. |
 | `switch` | Writable pure on/off fields, plus a curated **"DHW boost"** switch (one-time domestic-hot-water charge) when `HwcSFMode` supports it. |
 | `water_heater` | Domestic hot water (DHW) as a proper `water_heater` tile (curated Vaillant overlay: current `HwcStorageTemp`, target `HwcTempDesired`, mode `HwcOpMode`) — only appears when those registers exist. |
-| `climate` | One thermostat per active heating zone (curated Vaillant overlay: current `Z<n>RoomTemp`, target = comfort setpoint `Z<n>DayTemp`, `Z<n>OpMode` → HVAC mode/preset off/auto/day/night). Plus the optional [boiler regulation](#boiler-regulation) entity described below. |
+| `climate` | One thermostat per active heating zone (curated Vaillant overlay: current `Z<n>RoomTemp`, target = comfort setpoint `Z<n>DayTemp`, `Z<n>OpMode` → HVAC mode/preset off/auto/day/night) — **only appears if those Vaillant zone registers exist on the bus** (typically only with a Vaillant room controller still connected). Plus the optional [boiler regulation](#boiler-regulation) entity, which instead requires `boiler_room_sensor` to be set — **see the warning in that section if no `climate` entity shows up at all.** |
 | `calendar` | Vaillant weekly schedules (`<Prefix>Timer_<Day><Slot>`), one calendar per program (Z1/Z2/Z3/Hwc/Cc, …); editable once ebusd exposes a writable per-day message. Plus the optional ["Heating schedule"](#weekly-heating-schedule) calendar for boiler regulation. |
 
 ## Boiler regulation
@@ -162,6 +163,18 @@ Two behaviours are deliberate design choices, verified against real hardware:
 Boiler regulation is **opt-in and disabled by default** — it only appears once a
 **room temperature sensor** is configured in **Settings → Devices & services →
 eBUS Heating Control → Configure**:
+
+> ⚠️ **No `climate` entity yet? This is almost always why.** After installing or
+> reinstalling the integration, `boiler_room_sensor` is empty by default, so
+> `EbusdBoilerClimate` is **not created at all** — no entity, no error, nothing
+> in the logs. Set `boiler_room_sensor` below and reload the integration (or
+> wait for the next entity-discovery pass) to make it appear. This is
+> independent from the curated per-zone thermostats in the [Entities](#entities)
+> table above, which instead require Vaillant `Z<n>*` zone registers to exist
+> on the bus (typically only present if a Vaillant room controller is still
+> connected) — if you removed your room controller (see the
+> [installation guides](docs/installation-guides.md)), those won't appear
+> either way, and `boiler_room_sensor` is the only path to a `climate` entity.
 
 | Option | Default | Description |
 |---|---|---|
@@ -277,6 +290,47 @@ diagnostic entities, **disabled by default**.
   behaviour, if any. There is currently no separate watchdog on the Home Assistant
   side beyond the regular write cycle.
 
+## Troubleshooting
+
+- **No `climate` entity appears at all.** See the warning box in
+  [Enabling it](#enabling-it) above — the boiler regulation `climate` entity
+  requires `boiler_room_sensor` to be set in the integration's options, and is
+  silently skipped (no entity, no error) if it isn't. The curated per-zone
+  thermostats are separate and require Vaillant `Z<n>*` zone registers to exist
+  on the bus in the first place (normally only present with a Vaillant room
+  controller still connected) — removing that controller, as described in the
+  [installation guides](docs/installation-guides.md), means those will never
+  appear, regardless of options.
+- **Entities stuck on "unavailable" after upgrading from a version before
+  1.8.4, or after renaming/reinstalling the integration.** Home Assistant ties
+  config entries and entity unique IDs to the integration's `domain`. If you
+  upgraded across the `ebus_bridge` → `ebus_heating_control` domain rename (see
+  [CHANGELOG.md](CHANGELOG.md)) without removing and re-adding the integration,
+  you'll have two sets of entities: the old ones (stuck "unavailable" forever,
+  since nothing updates them anymore) and the new, working ones. Delete the
+  integration's old config entry (or the individual orphaned entities under
+  **Settings → Devices & services → Entities**, filtered by state
+  "Unavailable") — this is just leftover bookkeeping and safe to remove.
+- **A newly created `sensor`/`number`/etc. entity is "unavailable" right after
+  setup.** This is expected initially: the integration only creates an entity
+  once ebusd has actually returned a value for it at least once (see
+  [`add_fields_dynamically`](custom_components/ebus_heating_control/entity.py)),
+  and fills in the rest of the backlog gradually afterwards (see
+  [Architecture](#architecture) → `coordinator.py`). Give it a few polling
+  cycles; a full backlog catch-up after a fresh ebusd restart can take longer
+  (see the top-up logic in `coordinator.py`) but should resolve on its own.
+- **You changed something directly at the boiler (a physical switch, its own
+  control panel, a manual eBUS write outside Home Assistant, …) and Home
+  Assistant doesn't reflect it yet.** This is normal, not a bug — most fields
+  only update on the configured poll interval (default 30 s per cycle), and
+  values ebusd itself doesn't actively poll rely on this integration's
+  "top-up" catch-up logic (see [Limitations](#limitations) and
+  [Architecture](#architecture) → `coordinator.py`), which is intentionally
+  conservative to avoid flooding the bus. **It can take several minutes** for
+  a manual change to show up as an updated entity state in Home Assistant,
+  especially right after ebusd itself was restarted. Give it a few minutes
+  before assuming something is broken.
+
 ## Guides for real installations
 
 Step-by-step walkthroughs for specific real hardware setups (physical wiring,
@@ -285,6 +339,8 @@ ebusd add-on config, a manual `SetMode` test, etc.) live in
 so more can be added over time without cluttering this reference doc.
 
 ## Development
+
+```bash
 pip install ruff pytest
 ruff check custom_components/
 pytest -q
