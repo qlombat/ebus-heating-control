@@ -5,7 +5,7 @@ Diese Zeilen machen Entscheidungen des sensoCOMFORT (ctlv3) und der Wärmepumpe
 (`ebusctl hex …`) gegengeprüft – keine geratenen Offsets.
 
 Anhängen an die jeweils genannte CSV im ebusd-Config-Ordner, dann ebusd neu
-starten. Die eBUS Bridge legt die Entitäten danach selbst an.
+starten. Die eBUS Heating Control-Integration legt die Entitäten danach selbst an.
 
 ## 1) Warmwasser-Statuscode lesbar — in `38.v32.csv`
 Werte-Tabelle DIREKT an die vorhandene `Statenumber`-Zeile hängen; KEINE zweite

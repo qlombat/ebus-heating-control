@@ -5,7 +5,7 @@ from pathlib import Path
 
 _REGULATION_PATH = (
     Path(__file__).resolve().parents[1]
-    / "custom_components" / "ebus_bridge" / "regulation.py"
+    / "custom_components" / "ebus_heating_control" / "regulation.py"
 )
 _spec = importlib.util.spec_from_file_location("ebus_regulation", _REGULATION_PATH)
 regulation = importlib.util.module_from_spec(_spec)

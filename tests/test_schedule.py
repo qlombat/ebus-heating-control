@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEDULE_PATH = (
     Path(__file__).resolve().parents[1]
-    / "custom_components" / "ebus_bridge" / "schedule.py"
+    / "custom_components" / "ebus_heating_control" / "schedule.py"
 )
 _spec = importlib.util.spec_from_file_location("ebus_schedule", _SCHEDULE_PATH)
 schedule = importlib.util.module_from_spec(_spec)

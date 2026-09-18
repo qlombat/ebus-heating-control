@@ -28,7 +28,7 @@ write:
         text:
     entry_id:
       name: Instance (entry_id)
-      description: Only needed with multiple eBUS Bridge instances.
+      description: Only needed with multiple eBUS Heating Control instances.
       required: false
       selector:
         text:

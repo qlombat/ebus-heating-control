@@ -4,7 +4,7 @@ from pathlib import Path
 
 _MODEL_PATH = (
     Path(__file__).resolve().parents[1]
-    / "custom_components" / "ebus_bridge" / "model.py"
+    / "custom_components" / "ebus_heating_control" / "model.py"
 )
 _spec = importlib.util.spec_from_file_location("ebus_model", _MODEL_PATH)
 model = importlib.util.module_from_spec(_spec)

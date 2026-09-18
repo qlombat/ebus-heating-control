@@ -68,7 +68,7 @@ r,,,PartloadHcKW,d.00 heating partload,,,b509,0d6c00,value,,UCH,,kW,heating part
 # desselben Registers als Paar: gleicher Name -> Schreibzeile faellt STILL weg;
 # eigener Name (PartloadHwcKWSet) -> die LESEzeile faellt weg (element not found).
 # Beides zugleich geht in der Scan-Config nicht -> Lesewert hat Vorrang. Schreiben
-# bei Bedarf per Hex (38b509040ea900<kW>) oder dem ebus_bridge.write-Service.
+# bei Bedarf per Hex (38b509040ea900<kW>) oder dem ebus_heating_control.write-Service.
 r,,,PartloadHwcKW,d.77 hot water partload,,,b509,0da900,value,,UCH,,kW,storage charging power
 #w,elo,install,PartloadHwcKWSet,d.77 set hot water partload,,,b509,0ea900,value,,UCH,,kW,storage charging power
 # PowerValue 0daa00: STATISCHE Min/Max-Leistungsdaten (typschildartig), NICHT die

@@ -1,4 +1,4 @@
-"""eBUS Bridge – native HA-Integration über ebusds HTTP-JSON + TCP (ohne MQTT)."""
+"""eBUS Heating Control – native HA-Integration über ebusds HTTP-JSON + TCP (ohne MQTT)."""
 from __future__ import annotations
 
 import logging
@@ -90,7 +90,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     registry.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
-        name="eBUS Bridge",
+        name="eBUS Heating Control",
         manufacturer="ebusd",
         model="eBUS ↔ Home Assistant",
         sw_version=coordinator.global_data.get("version"),

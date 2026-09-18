@@ -1,6 +1,6 @@
-"""Services für eBUS Bridge: generischer Schreibzugriff auf ebusd.
+"""Services für eBUS Heating Control: generischer Schreibzugriff auf ebusd.
 
-`ebus_bridge.write` reicht einen Wert direkt an ebusds `write`-Kommando durch –
+`ebus_heating_control.write` reicht einen Wert direkt an ebusds `write`-Kommando durch –
 universell, ohne eigene Definitionen. Mehrfeld-Werte mit `;` trennen
 (z. B. `0;3;06:00;22:00;20.0`). Nach dem Schreiben wird frisch gelesen und der
 aktuelle Wert der Nachricht als Response zurückgegeben.
@@ -36,7 +36,7 @@ WRITE_SCHEMA = vol.Schema(
 def _get_coordinator(hass: HomeAssistant, entry_id: str | None) -> EbusdCoordinator:
     data: dict[str, EbusdCoordinator] = hass.data.get(DOMAIN, {})
     if not data:
-        raise ServiceValidationError("eBUS Bridge ist nicht eingerichtet.")
+        raise ServiceValidationError("eBUS Heating Control ist nicht eingerichtet.")
     if entry_id:
         if entry_id not in data:
             raise ServiceValidationError(f"Unbekannte entry_id: {entry_id}")
@@ -44,7 +44,7 @@ def _get_coordinator(hass: HomeAssistant, entry_id: str | None) -> EbusdCoordina
     if len(data) == 1:
         return next(iter(data.values()))
     raise ServiceValidationError(
-        "Mehrere eBUS-Bridge-Instanzen – bitte entry_id angeben."
+        "Mehrere eBUS-Heating-Control-Instanzen – bitte entry_id angeben."
     )
 
 

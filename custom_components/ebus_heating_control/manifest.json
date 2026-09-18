@@ -1,5 +1,5 @@
 {
-  "domain": "ebus_bridge",
+  "domain": "ebus_heating_control",
   "name": "eBUS Heating Control",
   "codeowners": [
     "@dneprojects",
@@ -14,5 +14,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/qlombat/ebus-heating-control/issues",
   "requirements": [],
-  "version": "1.8.3"
+  "version": "1.8.4"
 }

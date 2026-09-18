@@ -1,6 +1,6 @@
-"""Konstanten für die eBUS-Bridge-Integration."""
+"""Konstanten für die eBUS-Heating-Control-Integration."""
 
-DOMAIN = "ebus_bridge"
+DOMAIN = "ebus_heating_control"
 
 CONF_HOST = "host"
 CONF_PORT = "port"

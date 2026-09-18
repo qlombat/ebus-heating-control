@@ -21,7 +21,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "eBUS Bridge – Optionen",
+        "title": "eBUS Heating Control – Optionen",
         "data": {
           "scan_interval": "Poll-Intervall (Sekunden)",
           "exclude": "Nachrichtennamen ausschließen (Teilstrings, kommagetrennt, z. B. Timer)",

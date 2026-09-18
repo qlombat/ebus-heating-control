@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.4 - BREAKING
+- **Domain renamed**: `ebus_bridge` → `ebus_heating_control`, matching the repo/display name. This is a breaking change for existing installs:
+  - The integration folder moved from `custom_components/ebus_bridge/` to `custom_components/ebus_heating_control/`.
+  - The write service is now `ebus_heating_control.write` (was `ebus_bridge.write`) — update any automation/script that calls it.
+  - **After updating, remove the old integration entry and re-add it** (Settings → Devices & services → eBUS Heating Control → ⋮ → Delete, then Add integration again). Home Assistant ties config entries and entity unique IDs to the domain, so an in-place update will not pick this up automatically.
+  - Entity IDs keep their existing `<platform>.<object_id>` suffix (only the config entry/domain changes), but a fresh setup is still the only supported migration path for a domain rename.
+
 ## 1.8.3
 - Display name aligned with the new repo name: `eBUS Bridge` → `eBUS Heating Control` (manifest `name`, `hacs.json`, config flow title in `strings.json`/`en.json`/`de.json`, README). The integration's internal `domain` (`ebus_bridge`) and its device/entity IDs are unchanged, so existing installs and automations referencing them are unaffected.
 

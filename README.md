@@ -34,7 +34,7 @@ that no longer have a room controller on the bus.
 - [Boiler regulation](#boiler-regulation)
 - [Weekly heating schedule](#weekly-heating-schedule)
 - [Options](#options)
-- [Service: `ebus_bridge.write`](#service-ebus_bridgewrite)
+- [Service: `ebus_heating_control.write`](#service-ebus_heating_controlwrite)
 - [Bridge diagnostics](#bridge-diagnostics)
 - [Architecture](#architecture)
 - [Limitations](#limitations)
@@ -88,8 +88,8 @@ No MQTT broker is required anywhere in this chain.
    category *Integration*.
 2. Install **eBUS Heating Control** from HACS → restart Home Assistant.
 
-**Manual:** copy `custom_components/ebus_bridge/` into
-`<config>/custom_components/ebus_bridge/` → restart Home Assistant.
+**Manual:** copy `custom_components/ebus_heating_control/` into
+`<config>/custom_components/ebus_heating_control/` → restart Home Assistant.
 
 Then: **Settings → Devices & Services → Add integration → "eBUS Heating Control"**. The
 **host field is pre-filled with the Home Assistant host IP** (if ebusd runs locally
@@ -176,7 +176,7 @@ eBUS Heating Control → Configure**:
 | `boiler_write_interval` | `60` s | How often `SetMode` is recomputed and (re)written. Also acts as a heartbeat: every cycle rewrites the value regardless of whether it changed. |
 
 The formula and hysteresis logic live in
-[`custom_components/ebus_bridge/regulation.py`](custom_components/ebus_bridge/regulation.py) —
+[`custom_components/ebus_heating_control/regulation.py`](custom_components/ebus_heating_control/regulation.py) —
 pure functions with no Home Assistant dependency, unit-tested in
 [`tests/test_regulation.py`](tests/test_regulation.py).
 
@@ -201,10 +201,10 @@ Assistant calendar UI:
   the same behaviour you'd expect from a typical programmable thermostat.
 
 The slot-lookup logic lives in
-[`custom_components/ebus_bridge/schedule.py`](custom_components/ebus_bridge/schedule.py)
+[`custom_components/ebus_heating_control/schedule.py`](custom_components/ebus_heating_control/schedule.py)
 (pure, unit-tested in [`tests/test_schedule.py`](tests/test_schedule.py));
 persistence is handled by
-[`schedule_store.py`](custom_components/ebus_bridge/schedule_store.py) via
+[`schedule_store.py`](custom_components/ebus_heating_control/schedule_store.py) via
 `homeassistant.helpers.storage.Store`, with a single store instance shared between
 the `climate` and `calendar` entities so edits apply on the very next cycle.
 
@@ -219,13 +219,13 @@ the `climate` and `calendar` entities so edits apply on the very next cycle.
 | Fast | *(none)* | Comma-separated name substrings read directly from the bus every cycle instead of waiting for ebusd's own poll rotation — keeps them as fresh as the poll interval. Use sparingly: each entry costs one forced bus read per cycle. |
 | *(Boiler regulation options)* | — | See the [Boiler regulation](#boiler-regulation) table above. |
 
-## Service: `ebus_bridge.write`
+## Service: `ebus_heating_control.write`
 
 Generic pass-through to ebusd's `write` command, for anything not covered by the
 generated entities:
 
 ```yaml
-action: ebus_bridge.write
+action: ebus_heating_control.write
 data:
   circuit: bai
   message: SetMode
@@ -261,7 +261,7 @@ diagnostic entities, **disabled by default**.
 | `schedule.py` | Pure, unit-tested weekly-schedule slot lookup used by the "Heating schedule" calendar. No Home Assistant import. |
 | `schedule_store.py` | Persists the weekly schedule via `homeassistant.helpers.storage.Store`, shared between `climate.py` and `calendar.py`. |
 | `config_flow.py` | Config flow (host + both ports, tests connectivity) and options flow (poll interval, exclude, boiler regulation settings). |
-| `services.py` | The `ebus_bridge.write` service. |
+| `services.py` | The `ebus_heating_control.write` service. |
 
 ## Limitations
 
