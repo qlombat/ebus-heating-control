@@ -7,6 +7,7 @@ aktuelle Wert der Nachricht als Response zurückgegeben.
 """
 from __future__ import annotations
 
+import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant.core import (
     HomeAssistant,
@@ -15,7 +16,6 @@ from homeassistant.core import (
     SupportsResponse,
 )
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-import homeassistant.helpers.config_validation as cv
 
 from .client import EbusdError
 from .const import DOMAIN

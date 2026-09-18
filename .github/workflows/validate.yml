@@ -27,6 +27,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install ruff pytest
+      - run: pip install ruff==0.16.8 pytest
       - run: ruff check custom_components/
       - run: pytest -q

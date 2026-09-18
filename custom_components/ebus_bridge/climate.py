@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import timedelta
-from typing import Any
+from typing import Any, ClassVar
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.climate import (
@@ -64,7 +64,12 @@ from .const import (
 from .coordinator import EbusdCoordinator
 from .entity import build_device_info
 from .model import FieldDesc
-from .regulation import RegulationParams, compute_flow_setpoint, format_setmode, should_call_for_heat
+from .regulation import (
+    RegulationParams,
+    compute_flow_setpoint,
+    format_setmode,
+    should_call_for_heat,
+)
 from .schedule import active_setpoint
 from .schedule_store import HeatingScheduleStore
 
@@ -323,7 +328,7 @@ class EbusdBoilerClimate(CoordinatorEntity[EbusdCoordinator], RestoreEntity, Cli
     _attr_min_temp = 10
     _attr_max_temp = 28
     _attr_target_temperature_step = 0.5
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
+    _attr_hvac_modes: ClassVar[list[HVACMode]] = [HVACMode.OFF, HVACMode.HEAT]
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.TURN_ON
